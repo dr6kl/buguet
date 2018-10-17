@@ -25,8 +25,8 @@ class Debugger:
         self.position = 0
         self.source = source
         self.lines = source.split("\n")
-
-    def init(self):
+        self.stack = []
+        self.bp = 0
         self.load_transaction_trace()
         self.validate_code()
         self.prepare_ops_mapping()
@@ -35,13 +35,37 @@ class Debugger:
         self.init_ast()
 
     def init_ast(self):
+        self.functions = {}
         root = contract_data['AST']
         # print(root['children'][1]['name'])
         contract_definition = root['children'][2]
-        function_definition = contract_definition['children'][8]
+        function_definition = contract_definition['children'][11]
+        # print(json.dumps(function_definition, indent=2))
+        self.process_function_definition(function_definition)
         # print(contract_definition.keys())
         # print(json.dumps(function_definition, indent=4))
         # pdb.set_trace()
+
+    def process_function_definition(self, func_def):
+        name = func_def['attributes']['name']
+        func_src = list(map(lambda x: int(x), func_def['src'].split(":")))
+        func = {'name': name, 'src': func_src}
+        for c in func_def['children']:
+            if c['name'] == 'ParameterList':
+                params = self.get_func_parameters(c)
+                if params:
+                    func['params'] = params
+        self.functions[name] = func
+
+    def get_func_parameters(self, parameter_list):
+        result = []
+        for c in parameter_list['children']:
+            if c['name'] == 'VariableDeclaration':
+                var_name = c['attributes']['name']
+                if var_name:
+                    result.append(var_name)
+        return result
+
 
     def load_transaction_trace(self):
         res = self.web3.manager.request_blocking("debug_traceTransaction", [transaction_id])
@@ -118,15 +142,28 @@ class Debugger:
     def current_instuction_num(self):
         return self.pc_to_op_idx[self.current_op()['pc']]
 
+    def current_func(self):
+        s = self.current_src_fragment()['s']
+        for f in self.functions.values():
+            if s >= f['src'][0] and s < f['src'][0] + f['src'][1]:
+                return f
+
     def step(self):
         l = self.current_line_num()
         while self.current_line_num() == l:
             self.position += 1
 
     def next(self):
-        # l = self.current_line_num()
-        # while self.current_line_num() == l:
+        x = self.current_src_fragment()
+        while x == self.current_src_fragment():
+            self.advance()
+
+    def advance(self):
         self.position += 1
+        self.print_op()
+        op = self.current_op()
+        if op.op == 'JUMPDEST':
+            self.bp = len(op.stack)
 
     def print_stack(self):
         stack = self.struct_logs[self.position]['stack']
@@ -158,6 +195,13 @@ class Debugger:
         line_num = self.line_by_offset(offset)
         return line_num
 
+    def eval(self, line):
+        f = self.current_func()
+        params = f['params']
+        param_idx = len(params) - params.index(line) - 1
+        param_location = self.bp - param_idx - 1
+        print(self.current_op().stack[param_location])
+
     def show_lines(self, n = 3, highlight=True):
         line_num = self.current_line_num()
         f = self.current_src_fragment()
@@ -185,7 +229,6 @@ class Debugger:
 
     def repl(self):
         while True:
-            self.print_op()
             self.print_lines()
             line = input("Command: ")
             if line == "next" or line == "n":
@@ -196,6 +239,8 @@ class Debugger:
                 self.print_stack()
             elif line == "memory" or line == "mem":
                 self.print_memory()
+            else:
+                self.eval(line)
 
     def print_lines(self, n = 3):
         lines = self.show_lines(n)
@@ -212,8 +257,8 @@ class Debugger:
             debugger.next()
 
 
-transaction_id = "0x1381371786638d992c8532a62df971fa59500abce9e911e7fb45bb61690defe8"
+# transaction_id = "0x1381371786638d992c8532a62df971fa59500abce9e911e7fb45bb61690defe8"
+transaction_id = "0x3b70e0f9f2f15bef81f16f277468b3cfe46d065a227886577bbfb4ad9fabec5c"
 debugger = Debugger(web3, contract_data, transaction_id, source)
-debugger.init()
 debugger.to_next_jump_dest()
 debugger.repl()
