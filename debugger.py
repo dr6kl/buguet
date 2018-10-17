@@ -160,10 +160,27 @@ class Debugger:
 
     def show_lines(self, n = 3, highlight=True):
         line_num = self.current_line_num()
+        f = self.current_src_fragment()
+
         res = []
         for i in range(line_num - n, line_num + n + 1):
             if i >= 0  and i < len(self.lines):
-                res.append([i, self.lines[i]])
+                line = self.lines[i]
+                offset = self.offset_by_line[i]
+
+                if highlight:
+                    start = f['s'] - offset
+                    end = f['s'] - offset + f['l']
+                    if start >= 0 and end <= len(line):
+                        line = line[0:start] + colored(line[start:end], 'red') + line[end:len(line)]
+                    elif start >= 0 and start < len(line):
+                        line = line[0:start] + colored(line[start:len(line)], 'red')
+                    elif end > 0 and end <= len(line):
+                        line = colored(line[0:end], 'red') + line[end:len(line)]
+                    elif start < 0 and end > len(line):
+                        line = colored(line, 'red')
+
+                res.append([i, line])
         return res
 
     def repl(self):
