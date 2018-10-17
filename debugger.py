@@ -31,6 +31,7 @@ class Debugger:
         self.validate_code()
         self.prepare_ops_mapping()
         self.prepare_sourcemap()
+        self.prepare_line_offsets()
         self.init_ast()
 
     def init_ast(self):
@@ -73,12 +74,17 @@ class Debugger:
             op_num += 1
 
     def line_by_offset(self, offset):
-        pos = 0
-        for i in range(len(self.lines)):
-            if offset < pos + len(self.lines[i]):
-                return i
-            pos += len(self.lines[i]) + 1
-        return -1
+        start = 0
+        end = len(self.offset_by_line)
+        while True:
+            idx = (start + end) // 2
+            s = self.offset_by_line[idx]
+            if offset >= s and offset < s + len(self.lines[idx]) + 1:
+                return idx
+            elif offset < s:
+                end = idx - 1
+            elif offset >= s + len(self.lines[idx]) + 1:
+                start = idx + 1
 
     def prepare_sourcemap(self):
         self.srcmap = {}
@@ -102,6 +108,12 @@ class Debugger:
 
             self.srcmap[i] = {"s": s, "l": l}
 
+    def prepare_line_offsets(self):
+        self.offset_by_line = {}
+        pos = 0
+        for i in range(len(self.lines)):
+            self.offset_by_line[i] = pos
+            pos += len(self.lines[i]) + 1
 
     def current_instuction_num(self):
         return self.pc_to_op_idx[self.current_op()['pc']]
