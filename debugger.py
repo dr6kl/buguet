@@ -25,8 +25,7 @@ class Debugger:
         self.position = 0
         self.source = source
         self.lines = source.split("\n")
-        self.stack = []
-        self.bp = 0
+        self.bp_stack = []
         self.load_transaction_trace()
         self.validate_code()
         self.prepare_ops_mapping()
@@ -176,7 +175,9 @@ class Debugger:
         self.position += 1
         self.print_op()
         if self.current_src_fragment()['j'] == 'i':
-            self.bp = len(self.current_op().stack) - 1
+            self.bp_stack.append(len(self.current_op().stack) - 1)
+        if self.current_src_fragment()['j'] == 'o':
+            self.bp_stack.pop()
 
     def print_stack(self):
         stack = self.struct_logs[self.position]['stack']
@@ -212,7 +213,8 @@ class Debugger:
         f = self.current_func()
         params = f['params']
         param_idx = len(params) - params.index(line) - 1
-        param_location = self.bp - param_idx - 1
+        bp = self.bp_stack[len(self.bp_stack) - 1]
+        param_location = bp - param_idx - 1
         print(self.current_op().stack[param_location])
 
     def show_lines(self, n = 3, highlight=True):
