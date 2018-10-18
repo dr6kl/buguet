@@ -37,11 +37,15 @@ class Debugger:
     def init_ast(self):
         self.functions = {}
         root = contract_data['AST']
-        # print(root['children'][1]['name'])
-        contract_definition = root['children'][2]
-        function_definition = contract_definition['children'][11]
+        for c in root['children']:
+            if c['name'] == 'ContractDefinition':
+                for f in c['children']:
+                    if f['name'] == 'FunctionDefinition':
+                        self.process_function_definition(f)
+        # contract_definition = root['children'][2]
+        # function_definition = contract_definition['children'][11]
         # print(json.dumps(function_definition, indent=2))
-        self.process_function_definition(function_definition)
+        # self.process_function_definition(function_definition)
         # print(contract_definition.keys())
         # print(json.dumps(function_definition, indent=4))
         # pdb.set_trace()
@@ -130,7 +134,17 @@ class Debugger:
             else:
                 l = self.srcmap[i-1]['l']
 
-            self.srcmap[i] = {"s": s, "l": l}
+            if len(arr) > 2 and arr[2] != '':
+                f = int(arr[2])
+            else:
+                f = self.srcmap[i-1]['f']
+
+            if len(arr) > 3 and arr[3] != '':
+                j = arr[3]
+            else:
+                j = self.srcmap[i-1]['j']
+
+            self.srcmap[i] = {"s": s, "l": l, 'f': f, 'j': j}
 
     def prepare_line_offsets(self):
         self.offset_by_line = {}
@@ -161,9 +175,8 @@ class Debugger:
     def advance(self):
         self.position += 1
         self.print_op()
-        op = self.current_op()
-        if op.op == 'JUMPDEST':
-            self.bp = len(op.stack)
+        if self.current_src_fragment()['j'] == 'i':
+            self.bp = len(self.current_op().stack) - 1
 
     def print_stack(self):
         stack = self.struct_logs[self.position]['stack']
