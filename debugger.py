@@ -52,13 +52,27 @@ class Debugger:
     def process_function_definition(self, func_def):
         name = func_def['attributes']['name']
         func_src = list(map(lambda x: int(x), func_def['src'].split(":")))
-        func = {'name': name, 'src': func_src}
+        func = {'name': name, 'src': func_src, 'local_vars': []}
         for c in func_def['children']:
             if c['name'] == 'ParameterList':
                 params = self.get_func_parameters(c)
                 if params:
                     func['params'] = params
+            if c['name'] == 'Block':
+                def process_function_node(node):
+                    if node['name'] == 'VariableDeclaration':
+                        var_name = node['attributes']['name']
+                        func['local_vars'].append(var_name)
+                self.traverse_all(c, lambda x: process_function_node(x))
         self.functions[name] = func
+
+
+    def traverse_all(self, node, f):
+        f(node)
+        if 'children' in node:
+            for c in node['children']:
+                self.traverse_all(c, f)
+
 
     def get_func_parameters(self, parameter_list):
         result = []
@@ -211,11 +225,18 @@ class Debugger:
 
     def eval(self, line):
         f = self.current_func()
-        params = f['params']
-        param_idx = len(params) - params.index(line) - 1
         bp = self.bp_stack[len(self.bp_stack) - 1]
-        param_location = bp - param_idx - 1
-        print(self.current_op().stack[param_location])
+
+        if line in f['params']:
+            params = f['params']
+            param_idx = len(params) - params.index(line) - 1
+            param_location = bp - param_idx - 1
+            return self.current_op().stack[param_location]
+        elif line in f['local_vars']:
+            location = bp + f['local_vars'].index(line) + 1
+            return self.current_op().stack[location]
+        else:
+            return "Variable not found"
 
     def show_lines(self, n = 3, highlight=True):
         line_num = self.current_line_num()
@@ -255,7 +276,7 @@ class Debugger:
             elif line == "memory" or line == "mem":
                 self.print_memory()
             else:
-                self.eval(line)
+                print(self.eval(line))
 
     def print_lines(self, n = 3):
         lines = self.show_lines(n)
@@ -272,8 +293,8 @@ class Debugger:
             debugger.next()
 
 
-# transaction_id = "0x1381371786638d992c8532a62df971fa59500abce9e911e7fb45bb61690defe8"
-transaction_id = "0x3b70e0f9f2f15bef81f16f277468b3cfe46d065a227886577bbfb4ad9fabec5c"
+# transaction_id = "0x1381371786638d992c8532a62df971fa59500abce9e911e7fb45bb61690defe
+transaction_id= "0x3b70e0f9f2f15bef81f16f277468b3cfe46d065a227886577bbfb4ad9fabec5c"
 debugger = Debugger(web3, contract_data, transaction_id, source)
 debugger.to_next_jump_dest()
 debugger.repl()
