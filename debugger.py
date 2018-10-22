@@ -6,6 +6,7 @@ from web3 import Web3, HTTPProvider
 import sys
 import readline
 from termcolor import colored
+import hashlib
 
 data = json.load(open("Foo.json"))
 source = open('Foo.sol').read()
@@ -32,15 +33,28 @@ class Debugger:
         self.prepare_sourcemap()
         self.prepare_line_offsets()
         self.init_ast()
+        self.contract_address = "0x77e9bb3e6d8414402513dcff7e210575d43edca4"
 
     def init_ast(self):
-        self.functions = {}
+        self.contracts = []
         root = contract_data['AST']
         for c in root['children']:
             if c['name'] == 'ContractDefinition':
-                for f in c['children']:
-                    if f['name'] == 'FunctionDefinition':
-                        self.process_function_definition(f)
+                functions = []
+                variables = []
+                contract_src = list(map(lambda x: int(x), c['src'].split(":")))
+                contract_name = c['attributes']['name']
+                for x in c['children']:
+                    if x['name'] == 'FunctionDefinition':
+                        functions.append(self.get_function_definition(x))
+                    if x['name'] == 'VariableDeclaration':
+                        variables.append(x['attributes']['name'])
+                self.contracts.append({
+                    'name': contract_name,
+                    'src': contract_src,
+                    'variables': variables,
+                    'functions': functions
+                    })
         # contract_definition = root['children'][2]
         # function_definition = contract_definition['children'][11]
         # print(json.dumps(function_definition, indent=2))
@@ -49,7 +63,11 @@ class Debugger:
         # print(json.dumps(function_definition, indent=4))
         # pdb.set_trace()
 
-    def process_function_definition(self, func_def):
+    def get_variable_declaration(self, var_dec):
+        name = var_dec['attributes']['name']
+        return {'name': name}
+
+    def get_function_definition(self, func_def):
         name = func_def['attributes']['name']
         func_src = list(map(lambda x: int(x), func_def['src'].split(":")))
         func = {'name': name, 'src': func_src, 'local_vars': []}
@@ -64,7 +82,7 @@ class Debugger:
                         var_name = node['attributes']['name']
                         func['local_vars'].append(var_name)
                 self.traverse_all(c, lambda x: process_function_node(x))
-        self.functions[name] = func
+        return func
 
 
     def traverse_all(self, node, f):
@@ -169,9 +187,16 @@ class Debugger:
     def current_instuction_num(self):
         return self.pc_to_op_idx[self.current_op()['pc']]
 
-    def current_func(self):
+    def current_contract(self):
         s = self.current_src_fragment()['s']
-        for f in self.functions.values():
+        for c in self.contracts:
+            if s >= c['src'][0] and s < c['src'][0] + c['src'][1]:
+                return c
+
+    def current_func(self, contract):
+        functions = contract['functions']
+        s = self.current_src_fragment()['s']
+        for f in functions:
             if s >= f['src'][0] and s < f['src'][0] + f['src'][1]:
                 return f
 
@@ -224,7 +249,9 @@ class Debugger:
         return line_num
 
     def eval(self, line):
-        f = self.current_func()
+        c = self.current_contract()
+        f = self.current_func(c)
+
         bp = self.bp_stack[len(self.bp_stack) - 1]
 
         if line in f['params']:
@@ -235,6 +262,13 @@ class Debugger:
         elif line in f['local_vars']:
             location = bp + f['local_vars'].index(line) + 1
             return self.current_op().stack[location]
+        elif line in c['variables']:
+            idx = c['variables'].index(line)
+            res = self.web3.eth.getStorageAt(Web3.toChecksumAddress(self.contract_address), idx)
+            return res.hex()
+            # s = hashlib.sha3_256()
+            # s.update(b"data")
+            # print(s.hexdigest())
         else:
             return "Variable not found"
 
