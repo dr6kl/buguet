@@ -6,7 +6,8 @@ from web3 import Web3, HTTPProvider
 import sys
 import readline
 from termcolor import colored
-import hashlib
+import sha3
+import regex
 
 data = json.load(open("Foo.json"))
 source = open('Foo.sol').read()
@@ -33,7 +34,7 @@ class Debugger:
         self.prepare_sourcemap()
         self.prepare_line_offsets()
         self.init_ast()
-        self.contract_address = "0x77e9bb3e6d8414402513dcff7e210575d43edca4"
+        self.contract_address = self.load_contract_address()
 
     def init_ast(self):
         self.contracts = []
@@ -62,6 +63,10 @@ class Debugger:
         # print(contract_definition.keys())
         # print(json.dumps(function_definition, indent=4))
         # pdb.set_trace()
+
+    def load_contract_address(self):
+        transaction = self.web3.eth.getTransaction(self.transaction_id)
+        return transaction.to
 
     def get_variable_declaration(self, var_dec):
         name = var_dec['attributes']['name']
@@ -201,9 +206,10 @@ class Debugger:
                 return f
 
     def step(self):
-        l = self.current_line_num()
-        while self.current_line_num() == l:
-            self.position += 1
+        # l = self.current_line_num()
+        self.advance()
+        # while self.current_line_num() == l:
+            # self.advance()
 
     def next(self):
         x = self.current_src_fragment()
@@ -248,27 +254,48 @@ class Debugger:
         line_num = self.line_by_offset(offset)
         return line_num
 
+    def parse_expresion(self, str):
+        m = regex.match(r"^(.+?)(?:\[(.+?)\])*$", str)
+        if not m:
+            return None
+        return m.captures(1) + m.captures(2)
+
     def eval(self, line):
+        expr = self.parse_expresion(line)
+        if not expr:
+            return None
+
+        var_name = expr[0]
+        keys = expr[1:]
         c = self.current_contract()
         f = self.current_func(c)
 
         bp = self.bp_stack[len(self.bp_stack) - 1]
 
-        if line in f['params']:
+        if var_name in f['params']:
             params = f['params']
-            param_idx = len(params) - params.index(line) - 1
+            param_idx = len(params) - params.index(var_name) - 1
             param_location = bp - param_idx - 1
             return self.current_op().stack[param_location]
-        elif line in f['local_vars']:
-            location = bp + f['local_vars'].index(line) + 1
+        elif var_name in f['local_vars']:
+            location = bp + f['local_vars'].index(var_name) + 1
             return self.current_op().stack[location]
-        elif line in c['variables']:
-            idx = c['variables'].index(line)
-            res = self.web3.eth.getStorageAt(Web3.toChecksumAddress(self.contract_address), idx)
+        elif var_name in c['variables']:
+            idx = c['variables'].index(var_name)
+            address = idx
+            for k in keys:
+                m = regex.match(r"\"(.*)\"", k)
+                if m:
+                    k = m.group(1)
+                    s = sha3.keccak_256()
+                    s.update(bytes(k, 'utf-8'))
+                    s.update(idx.to_bytes(32, byteorder='big'))
+                    address = s.digest()
+
+            # print(address.hex())
+            # position = int.from_bytes(address, byteorder='big')
+            res = self.web3.eth.getStorageAt(Web3.toChecksumAddress(self.contract_address), address)
             return res.hex()
-            # s = hashlib.sha3_256()
-            # s.update(b"data")
-            # print(s.hexdigest())
         else:
             return "Variable not found"
 
@@ -326,9 +353,7 @@ class Debugger:
         while(debugger.current_op()['op'] != 'JUMPDEST'):
             debugger.next()
 
-
-# transaction_id = "0x1381371786638d992c8532a62df971fa59500abce9e911e7fb45bb61690defe
-transaction_id= "0x3b70e0f9f2f15bef81f16f277468b3cfe46d065a227886577bbfb4ad9fabec5c"
+transaction_id = "0x94487dd0397273c17080d4e785aa3db6e63ffbaf8399838845ecd539410d8158"
 debugger = Debugger(web3, contract_data, transaction_id, source)
 debugger.to_next_jump_dest()
 debugger.repl()
