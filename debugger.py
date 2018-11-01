@@ -284,13 +284,19 @@ class Debugger:
             idx = c['variables'].index(var_name)
             address = idx.to_bytes(32, byteorder='big')
             for k in keys:
-                m = regex.match(r"\"(.*)\"", k)
-                if m:
-                    k = m.group(1)
+                string_match = regex.match(r"\"(.*)\"", k)
+                int_match = regex.match(r"\d+", k)
+                if string_match:
+                    k = string_match.group(1)
                     s = sha3.keccak_256()
                     s.update(bytes(k, 'utf-8'))
                     s.update(address)
                     address = s.digest()
+                elif int_match:
+                    k = int(k)
+                    s = sha3.keccak_256()
+                    s.update(address)
+                    address = int.from_bytes(s.digest(), byteorder='big') + k
 
             # print(address.hex())
             # position = int.from_bytes(address, byteorder='big')
