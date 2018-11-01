@@ -282,14 +282,14 @@ class Debugger:
             return self.current_op().stack[location]
         elif var_name in c['variables']:
             idx = c['variables'].index(var_name)
-            address = idx
+            address = idx.to_bytes(32, byteorder='big')
             for k in keys:
                 m = regex.match(r"\"(.*)\"", k)
                 if m:
                     k = m.group(1)
                     s = sha3.keccak_256()
                     s.update(bytes(k, 'utf-8'))
-                    s.update(idx.to_bytes(32, byteorder='big'))
+                    s.update(address)
                     address = s.digest()
 
             # print(address.hex())
@@ -353,7 +353,7 @@ class Debugger:
         while(debugger.current_op()['op'] != 'JUMPDEST'):
             debugger.next()
 
-transaction_id = "0x94487dd0397273c17080d4e785aa3db6e63ffbaf8399838845ecd539410d8158"
+transaction_id = open("transaction_id.txt", "r").read()
 debugger = Debugger(web3, contract_data, transaction_id, source)
 debugger.to_next_jump_dest()
 debugger.repl()
