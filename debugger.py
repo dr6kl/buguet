@@ -296,7 +296,7 @@ class Debugger:
                     k = int(k)
                     s = sha3.keccak_256()
                     s.update(address)
-                    address = int.from_bytes(s.digest(), byteorder='big') + k
+                    address = (int.from_bytes(s.digest(), byteorder='big') + k).to_bytes(32, byteorder='big')
 
             # print(address.hex())
             # position = int.from_bytes(address, byteorder='big')
