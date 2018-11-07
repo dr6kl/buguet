@@ -28,13 +28,16 @@ class Debugger:
         self.source = source
         self.lines = source.split("\n")
         self.bp_stack = []
+        self.transaction = None
         self.load_transaction_trace()
         self.validate_code()
         self.prepare_ops_mapping()
         self.prepare_sourcemap()
         self.prepare_line_offsets()
         self.init_ast()
-        self.contract_address = self.load_contract_address()
+        self.load_transaction()
+        self.contract_address = self.transaction.to
+        self.block_number = self.transaction.blockNumber
 
     def init_ast(self):
         self.contracts = []
@@ -56,17 +59,9 @@ class Debugger:
                     'variables': variables,
                     'functions': functions
                     })
-        # contract_definition = root['children'][2]
-        # function_definition = contract_definition['children'][11]
-        # print(json.dumps(function_definition, indent=2))
-        # self.process_function_definition(function_definition)
-        # print(contract_definition.keys())
-        # print(json.dumps(function_definition, indent=4))
-        # pdb.set_trace()
 
-    def load_contract_address(self):
-        transaction = self.web3.eth.getTransaction(self.transaction_id)
-        return transaction.to
+    def load_transaction(self):
+        self.transaction = self.web3.eth.getTransaction(self.transaction_id)
 
     def get_variable_declaration(self, var_dec):
         name = var_dec['attributes']['name']
@@ -87,6 +82,8 @@ class Debugger:
                         var_name = node['attributes']['name']
                         func['local_vars'].append(var_name)
                 self.traverse_all(c, lambda x: process_function_node(x))
+        if not 'params' in func:
+            func['params'] = []
         return func
 
 
@@ -298,12 +295,17 @@ class Debugger:
                     s.update(address)
                     address = (int.from_bytes(s.digest(), byteorder='big') + k).to_bytes(32, byteorder='big')
 
-            # print(address.hex())
-            # position = int.from_bytes(address, byteorder='big')
-            res = self.web3.eth.getStorageAt(Web3.toChecksumAddress(self.contract_address), address)
+            res = self.get_storage_at_address(address)
             return res.hex()
         else:
             return "Variable not found"
+
+    def get_storage_at_address(self, address):
+        op = self.current_op()
+        if op.storage and address.hex() in op.storage:
+            return bytes.fromhex(op.storage[address.hex()])
+        else:
+            return self.web3.eth.getStorageAt(Web3.toChecksumAddress(self.contract_address), address, self.block_number - 1)
 
     def show_lines(self, n = 3, highlight=True):
         line_num = self.current_line_num()
