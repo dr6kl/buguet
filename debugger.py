@@ -8,6 +8,7 @@ import readline
 from termcolor import colored
 import sha3
 import regex
+import beeprint
 
 data = json.load(open("Foo.json"))
 source = open('Foo.sol').read()
@@ -18,6 +19,87 @@ web3 = Web3(HTTPProvider('http://localhost:8545'))
 web3.middleware_stack.inject(geth_poa_middleware, layer=0)
 
 # web3.eth.defaultAccount = web3.eth.accounts[0]
+class Contract:
+    def __init__(self):
+        self.variables = []
+        self.functions = []
+
+    def parse_ast(self, item):
+        self.src = list(map(lambda x: int(x), item['src'].split(":")))
+        self.name = item['attributes']['name']
+        for x in item['children']:
+            if x['name'] == 'FunctionDefinition':
+                func = Function()
+                func.parse_ast(x)
+                self.functions.append(func)
+            if x['name'] == 'VariableDeclaration':
+                self.variables.append({
+                    'name': x['attributes']['name'],
+                    'type': x['attributes']['type']
+                })
+
+    def set_storage_locations(self):
+        current_storage_idx = 0
+        bits_consumed = 0
+        for i, var in enumerate(self.variables):
+            type_size = self.type_size(var['type'])
+            bits_consumed += type_size
+
+            if bits_consumed > 256:
+                bits_consumed = type_size
+                current_storage_idx += 1
+
+            self.variables[i]['type_size'] = type_size
+            self.variables[i]['location'] = current_storage_idx
+            self.variables[i]['offset'] = bits_consumed - type_size
+
+    def type_size(self, type_name):
+        int_match = regex.match("u?int(\d+)", type_name)
+        if int_match:
+            if int_match[1]:
+                return int(int_match[1])
+        return 256
+
+    def find_variable(self, var_name):
+        for v in self.variables:
+            if v['name'] == var_name:
+                return v
+        return None
+
+class Function:
+    def __init__(self):
+        self.local_vars = []
+        self.params = []
+
+    def parse_ast(self, item):
+        self.name = item['attributes']['name']
+        self.src = list(map(lambda x: int(x), item['src'].split(":")))
+        for c in item['children']:
+            if c['name'] == 'ParameterList':
+                params = self.get_func_parameters(c)
+                if params:
+                    self.params = params
+            if c['name'] == 'Block':
+                def process_function_node(node):
+                    if node['name'] == 'VariableDeclaration':
+                        var_name = node['attributes']['name']
+                        self.local_vars.append(var_name)
+                self.traverse_all(c, lambda x: process_function_node(x))
+
+    def traverse_all(self, node, f):
+        f(node)
+        if 'children' in node:
+            for c in node['children']:
+                self.traverse_all(c, f)
+
+    def get_func_parameters(self, parameter_list):
+        result = []
+        for c in parameter_list['children']:
+            if c['name'] == 'VariableDeclaration':
+                var_name = c['attributes']['name']
+                if var_name:
+                    result.append(var_name)
+        return result
 
 class Debugger:
     def __init__(self, web3, contract_data, transaction_id, source):
@@ -44,65 +126,13 @@ class Debugger:
         root = contract_data['AST']
         for c in root['children']:
             if c['name'] == 'ContractDefinition':
-                functions = []
-                variables = []
-                contract_src = list(map(lambda x: int(x), c['src'].split(":")))
-                contract_name = c['attributes']['name']
-                for x in c['children']:
-                    if x['name'] == 'FunctionDefinition':
-                        functions.append(self.get_function_definition(x))
-                    if x['name'] == 'VariableDeclaration':
-                        variables.append(x['attributes']['name'])
-                self.contracts.append({
-                    'name': contract_name,
-                    'src': contract_src,
-                    'variables': variables,
-                    'functions': functions
-                    })
+                contract = Contract()
+                contract.parse_ast(c)
+                contract.set_storage_locations()
+                self.contracts.append(contract)
 
     def load_transaction(self):
         self.transaction = self.web3.eth.getTransaction(self.transaction_id)
-
-    def get_variable_declaration(self, var_dec):
-        name = var_dec['attributes']['name']
-        return {'name': name}
-
-    def get_function_definition(self, func_def):
-        name = func_def['attributes']['name']
-        func_src = list(map(lambda x: int(x), func_def['src'].split(":")))
-        func = {'name': name, 'src': func_src, 'local_vars': []}
-        for c in func_def['children']:
-            if c['name'] == 'ParameterList':
-                params = self.get_func_parameters(c)
-                if params:
-                    func['params'] = params
-            if c['name'] == 'Block':
-                def process_function_node(node):
-                    if node['name'] == 'VariableDeclaration':
-                        var_name = node['attributes']['name']
-                        func['local_vars'].append(var_name)
-                self.traverse_all(c, lambda x: process_function_node(x))
-        if not 'params' in func:
-            func['params'] = []
-        return func
-
-
-    def traverse_all(self, node, f):
-        f(node)
-        if 'children' in node:
-            for c in node['children']:
-                self.traverse_all(c, f)
-
-
-    def get_func_parameters(self, parameter_list):
-        result = []
-        for c in parameter_list['children']:
-            if c['name'] == 'VariableDeclaration':
-                var_name = c['attributes']['name']
-                if var_name:
-                    result.append(var_name)
-        return result
-
 
     def load_transaction_trace(self):
         res = self.web3.manager.request_blocking("debug_traceTransaction", [transaction_id])
@@ -192,14 +222,13 @@ class Debugger:
     def current_contract(self):
         s = self.current_src_fragment()['s']
         for c in self.contracts:
-            if s >= c['src'][0] and s < c['src'][0] + c['src'][1]:
+            if s >= c.src[0] and s < c.src[0] + c.src[1]:
                 return c
 
     def current_func(self, contract):
-        functions = contract['functions']
         s = self.current_src_fragment()['s']
-        for f in functions:
-            if s >= f['src'][0] and s < f['src'][0] + f['src'][1]:
+        for f in contract.functions:
+            if s >= f.src[0] and s < f.src[0] + f.src[1]:
                 return f
 
     def step(self):
@@ -264,41 +293,52 @@ class Debugger:
 
         var_name = expr[0]
         keys = expr[1:]
-        c = self.current_contract()
-        f = self.current_func(c)
+        contract = self.current_contract()
+        function = self.current_func(contract)
 
         bp = self.bp_stack[len(self.bp_stack) - 1]
 
-        if var_name in f['params']:
-            params = f['params']
+        storage_var = contract.find_variable(var_name)
+
+        if var_name in function.params:
+            params = function['params']
             param_idx = len(params) - params.index(var_name) - 1
             param_location = bp - param_idx - 1
             return self.current_op().stack[param_location]
-        elif var_name in f['local_vars']:
-            location = bp + f['local_vars'].index(var_name) + 1
+        elif var_name in function.local_vars:
+            location = bp + function.local_vars.index(var_name) + 1
             return self.current_op().stack[location]
-        elif var_name in c['variables']:
-            idx = c['variables'].index(var_name)
-            address = idx.to_bytes(32, byteorder='big')
-            for k in keys:
-                string_match = regex.match(r"\"(.*)\"", k)
-                int_match = regex.match(r"\d+", k)
-                if string_match:
-                    k = string_match.group(1)
-                    s = sha3.keccak_256()
-                    s.update(bytes(k, 'utf-8'))
-                    s.update(address)
-                    address = s.digest()
-                elif int_match:
-                    k = int(k)
-                    s = sha3.keccak_256()
-                    s.update(address)
-                    address = (int.from_bytes(s.digest(), byteorder='big') + k).to_bytes(32, byteorder='big')
-
-            res = self.get_storage_at_address(address)
-            return res.hex()
+        elif storage_var:
+            return self.eval_contract_variable(contract, storage_var, keys)
         else:
             return "Variable not found"
+
+    def eval_contract_variable(self, contract, var, keys):
+        idx = var['location']
+        address = idx.to_bytes(32, byteorder='big')
+        for k in keys:
+            string_match = regex.match(r"\"(.*)\"", k)
+            int_match = regex.match(r"\d+", k)
+            if string_match:
+                k = string_match.group(1)
+                s = sha3.keccak_256()
+                s.update(bytes(k, 'utf-8'))
+                s.update(address)
+                address = s.digest()
+            elif int_match:
+                k = int(k)
+                s = sha3.keccak_256()
+                s.update(address)
+                address = (int.from_bytes(s.digest(), byteorder='big') + k).to_bytes(32, byteorder='big')
+
+        res = self.get_storage_at_address(address)
+
+        if var['offset'] != 0 or var['type_size'] != 256:
+            res_int = int.from_bytes(res, byteorder='big')
+            res_int = (res_int >> var['offset']) & ((2 << var['type_size'] - 1) - 1)
+            res = res_int.to_bytes(32, byteorder='big')
+
+        return res.hex()
 
     def get_storage_at_address(self, address):
         op = self.current_op()
