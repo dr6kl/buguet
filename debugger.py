@@ -232,22 +232,37 @@ class Debugger:
                 return f
 
     def step(self):
-        # l = self.current_line_num()
-        self.advance()
-        # while self.current_line_num() == l:
-            # self.advance()
-
-    def next(self):
         x = self.current_src_fragment()
         while x == self.current_src_fragment():
             self.advance()
+
+    def next(self):
+        depth = 0
+        x = self.current_src_fragment()
+        start_stack_height = len(self.bp_stack)
+        while True:
+            self.step()
+            if len(self.bp_stack) == start_stack_height:
+                if self.current_src_fragment()['j'] == 'o':
+                    self.step()
+                break;
+
+    def stepout(self):
+        x = self.current_src_fragment()
+        start_stack_height = len(self.bp_stack)
+        while True:
+            self.step()
+            if len(self.bp_stack) == start_stack_height - 1:
+                if self.current_src_fragment()['j'] == 'o':
+                    self.step()
+                break;
 
     def advance(self):
         self.position += 1
         self.print_op()
         if self.current_src_fragment()['j'] == 'i':
             self.bp_stack.append(len(self.current_op().stack) - 1)
-        if self.current_src_fragment()['j'] == 'o':
+        if self.current_src_fragment()['j'] == 'o' and len(self.bp_stack) > 0:
             self.bp_stack.pop()
 
     def print_stack(self):
@@ -380,6 +395,10 @@ class Debugger:
                 self.next()
             elif line == "step" or line == "s":
                 self.step()
+            elif line == "stepout" or line == "so":
+                self.stepout()
+            elif line == "":
+                self.advance()
             elif line == "stack" or line == "st":
                 self.print_stack()
             elif line == "memory" or line == "mem":
@@ -399,7 +418,7 @@ class Debugger:
 
     def to_next_jump_dest(self):
         while(debugger.current_op()['op'] != 'JUMPDEST'):
-            debugger.next()
+            debugger.advance()
 
 transaction_id = open("transaction_id.txt", "r").read()
 debugger = Debugger(web3, contract_data, transaction_id, source)
