@@ -120,6 +120,7 @@ class Debugger:
         self.load_transaction()
         self.contract_address = self.transaction.to
         self.block_number = self.transaction.blockNumber
+        self.breakpoints = []
 
     def init_ast(self):
         self.contracts = []
@@ -238,24 +239,29 @@ class Debugger:
 
     def next(self):
         depth = 0
-        x = self.current_src_fragment()
         start_stack_height = len(self.bp_stack)
         while True:
             self.step()
             if len(self.bp_stack) == start_stack_height:
                 if self.current_src_fragment()['j'] == 'o':
                     self.step()
-                break;
+                break
 
     def stepout(self):
-        x = self.current_src_fragment()
         start_stack_height = len(self.bp_stack)
         while True:
             self.step()
             if len(self.bp_stack) == start_stack_height - 1:
                 if self.current_src_fragment()['j'] == 'o':
                     self.step()
-                break;
+                break
+
+    def continu(self):
+        while True:
+            self.advance()
+            for breakpoint_linenumber in self.breakpoints:
+                if breakpoint_linenumber == self.current_line_num():
+                    return
 
     def advance(self):
         self.position += 1
@@ -397,12 +403,17 @@ class Debugger:
                 self.step()
             elif line == "stepout" or line == "so":
                 self.stepout()
+            elif line == "continue" or line == "c":
+                self.continu()
             elif line == "":
                 self.advance()
             elif line == "stack" or line == "st":
                 self.print_stack()
             elif line == "memory" or line == "mem":
                 self.print_memory()
+            elif str.startswith(line, "break"):
+                linenumber = int(line.split(" ")[1])
+                self.breakpoints.append(linenumber)
             else:
                 print(self.eval(line))
 
