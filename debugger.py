@@ -335,31 +335,51 @@ class Debugger:
             return "Variable not found"
 
     def eval_contract_variable(self, contract, var, keys):
-        idx = var['location']
-        address = idx.to_bytes(32, byteorder='big')
-        for k in keys:
-            string_match = regex.match(r"\"(.*)\"", k)
-            int_match = regex.match(r"\d+", k)
-            if string_match:
-                k = string_match.group(1)
-                s = sha3.keccak_256()
-                s.update(bytes(k, 'utf-8'))
-                s.update(address)
-                address = s.digest()
-            elif int_match:
-                k = int(k)
+        slot = var['location']
+        address = slot.to_bytes(32, byteorder='big')
+        if regex.match("string", var['type']):
+            res = self.get_storage_at_address(address)
+            res_int = (int).from_bytes(res, 'big')
+            large_string = res_int & 0x1
+            if large_string:
+                str_length = (res_int - 1) // 2
                 s = sha3.keccak_256()
                 s.update(address)
-                address = (int.from_bytes(s.digest(), byteorder='big') + k).to_bytes(32, byteorder='big')
+                res = ''
+                for i in range(0, str_length // 32 + 1):
+                    address = (int.from_bytes(s.digest(), byteorder='big') + i).to_bytes(32, byteorder='big')
+                    slot_value = self.get_storage_at_address(address)
+                    slot_value = str(slot_value[:str_length - i*32], 'utf8')
+                    res += slot_value
+            else:
+                str_length = (res_int & 0xFF) // 2
+                res = str(res[:str_length], "utf8")
 
-        res = self.get_storage_at_address(address)
+            return res
+        else:
+            for k in keys:
+                string_match = regex.match(r"\"(.*)\"", k)
+                int_match = regex.match(r"\d+", k)
+                if string_match:
+                    k = string_match.group(1)
+                    s = sha3.keccak_256()
+                    s.update(bytes(k, 'utf-8'))
+                    s.update(address)
+                    address = s.digest()
+                elif int_match:
+                    k = int(k)
+                    s = sha3.keccak_256()
+                    s.update(address)
+                    address = (int.from_bytes(s.digest(), byteorder='big') + k).to_bytes(32, byteorder='big')
 
-        if var['offset'] != 0 or var['type_size'] != 256:
-            res_int = int.from_bytes(res, byteorder='big')
-            res_int = (res_int >> var['offset']) & ((2 << var['type_size'] - 1) - 1)
-            res = res_int.to_bytes(32, byteorder='big')
+            res = self.get_storage_at_address(address)
 
-        return res.hex()
+            if var['offset'] != 0 or var['type_size'] != 256:
+                res_int = int.from_bytes(res, byteorder='big')
+                res_int = (res_int >> var['offset']) & ((2 << var['type_size'] - 1) - 1)
+                res = res_int.to_bytes(32, byteorder='big')
+
+            return res.hex()
 
     def get_storage_at_address(self, address):
         op = self.current_op()
