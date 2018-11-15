@@ -33,36 +33,28 @@ class Contract:
                 func.parse_ast(x)
                 self.functions.append(func)
             if x['name'] == 'VariableDeclaration':
-                self.variables.append({
-                    'name': x['attributes']['name'],
-                    'type': x['attributes']['type']
-                })
+                storage_var = StorageVariable(
+                        x['attributes']['name'],
+                        SolidityType.parse(x['attributes']['type'])
+                )
+                self.variables.append(storage_var)
 
     def set_storage_locations(self):
         current_storage_idx = 0
         bits_consumed = 0
         for i, var in enumerate(self.variables):
-            type_size = self.type_size(var['type'])
-            bits_consumed += type_size
+            bits_consumed += var.var_type.size
 
             if bits_consumed > 256:
-                bits_consumed = type_size
+                bits_consumed = var.var_type.size
                 current_storage_idx += 1
 
-            self.variables[i]['type_size'] = type_size
-            self.variables[i]['location'] = current_storage_idx
-            self.variables[i]['offset'] = bits_consumed - type_size
-
-    def type_size(self, type_name):
-        int_match = regex.match("u?int(\d+)", type_name)
-        if int_match:
-            if int_match[1]:
-                return int(int_match[1])
-        return 256
+            self.variables[i].location = current_storage_idx
+            self.variables[i].offset = bits_consumed - var.var_type.size
 
     def find_variable(self, var_name):
         for v in self.variables:
-            if v['name'] == var_name:
+            if v.name == var_name:
                 return v
         return None
 
@@ -100,6 +92,75 @@ class Function:
                 if var_name:
                     result.append(var_name)
         return result
+
+class StorageVariable:
+    def __init__(self, name, var_type):
+        self.name = name;
+        self.var_type = var_type;
+
+
+class SolidityType:
+    def __init__(self, type_name, size):
+        self.type_name = type_name;
+        self.size = size;
+
+    @classmethod
+    def parse(cls, type_str):
+        match = regex.match("(u?int)(\d+)", type_str)
+        if match:
+            return cls(match.group(1), int(match.group(2)))
+
+        match = regex.match("bool", type_str)
+        if match:
+            return cls('bool', 8)
+
+        match = regex.match("bytes(\d+)", type_str)
+        if match:
+            return cls('fixed_bytes', int(match.group(1)) * 8)
+
+        match = regex.match("bytes.*", type_str)
+        if match:
+            return cls('bytes', 256)
+
+        match = regex.match("string.*", type_str)
+        if match:
+            return cls('string', 256)
+
+        match = regex.match("address", type_str)
+        if match:
+            return cls('address', 160)
+
+        match = regex.match("mapping.*", type_str)
+        if match:
+            return cls('map', 256)
+
+        match = regex.match(".*\[\].*", type_str)
+        if match:
+            return cls('array', 256)
+
+    def is_fixedsize(self):
+        return self.type_name in ['int', 'uint', 'fixed_bytes', 'bool', 'address']
+
+    def as_string(self, bytes_value):
+        if self.type_name == 'int':
+            return (int).from_bytes(bytes_value, 'big')
+        if self.type_name == 'uint':
+            return (int).from_bytes(bytes_value, 'big')
+        if self.type_name == 'bool':
+            if (int).from_bytes(bytes_value, 'big') == 1:
+                return 'true'
+            else:
+                return 'false'
+        if self.type_name == 'address':
+            return '0x' + bytes_value[12:32].hex()
+        if self.type_name == 'fixed_bytes':
+            return '0x' + bytes_value[32-(self.size//8):32].hex()
+        if self.type_name == 'string':
+            return str(bytes_value, 'utf8')
+        elif self.type_name == 'bytes':
+            return '0x' + bytes_value.hex()
+
+        return bytes_value.hex()
 
 class Debugger:
     def __init__(self, web3, contract_data, transaction_id, source):
@@ -301,14 +362,14 @@ class Debugger:
         line_num = self.line_by_offset(offset)
         return line_num
 
-    def parse_expresion(self, str):
+    def parse_expression(self, str):
         m = regex.match(r"^(.+?)(?:\[(.+?)\])*$", str)
         if not m:
             return None
         return m.captures(1) + m.captures(2)
 
     def eval(self, line):
-        expr = self.parse_expresion(line)
+        expr = self.parse_expression(line)
         if not expr:
             return None
 
@@ -334,7 +395,7 @@ class Debugger:
         else:
             return "Variable not found"
 
-    def eval_storage_bytes(self, address):
+    def eval_storage_var_string_or_bytes(self, address):
         data = self.get_storage_at_address(address)
         data_int = (int).from_bytes(data, 'big')
         large_string = data_int & 0x1
@@ -356,12 +417,18 @@ class Debugger:
         return result
 
     def eval_contract_variable(self, contract, var, keys):
-        slot = var['location']
+        slot = var.location
         address = slot.to_bytes(32, byteorder='big')
-        if regex.match("string", var['type']):
-            return str(self.eval_storage_bytes(address), "utf8")
-        if regex.match("bytes", var['type']):
-            return '0x' + self.eval_storage_bytes(address).hex()
+
+        if var.var_type.is_fixedsize():
+            result = self.get_storage_at_address(address)
+
+            if var.offset != 0 or var.var_type.size != 256:
+                result_int = int.from_bytes(result, byteorder='big')
+                result_int = (result_int >> var.offset) & ((2 << var.var_type.size - 1) - 1)
+                result = result_int.to_bytes(32, byteorder='big')
+        elif var.var_type.type_name in ['string', 'bytes']:
+            result = self.eval_storage_var_string_or_bytes(address)
         else:
             for k in keys:
                 string_match = regex.match(r"\"(.*)\"", k)
@@ -378,14 +445,9 @@ class Debugger:
                     s.update(address)
                     address = (int.from_bytes(s.digest(), byteorder='big') + k).to_bytes(32, byteorder='big')
 
-            res = self.get_storage_at_address(address)
+            result = self.get_storage_at_address(address)
 
-            if var['offset'] != 0 or var['type_size'] != 256:
-                res_int = int.from_bytes(res, byteorder='big')
-                res_int = (res_int >> var['offset']) & ((2 << var['type_size'] - 1) - 1)
-                res = res_int.to_bytes(32, byteorder='big')
-
-            return res.hex()
+        return var.var_type.as_string(result)
 
     def get_storage_at_address(self, address):
         op = self.current_op()

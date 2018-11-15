@@ -3,10 +3,18 @@ pragma solidity ^0.4.13;
 contract Foo {
   uint8 aaa1;
   uint8 aaa2;
+  bool flag;
+  bool flag2;
   uint8 aaa3;
   uint256 cnt;
+  address myAddr;
+  byte vv;
+  uint zz;
+  int16 qqq;
   string str;
   string str2;
+  bytes24 qqq1;
+  int8 qqq2;
   bytes bts;
   bytes bts2;
   mapping (string => uint256) myMap;
@@ -24,6 +32,9 @@ contract Foo {
     aaa["foo"][3] = 151;
     bbb.length = 10;
     bbb[7]["bar"] = 49;
+    flag = true;
+    flag2 = false;
+    vv = 49;
     aaa1 = 100;
     aaa2 = 101;
     aaa3 = 103;
@@ -36,6 +47,10 @@ contract Foo {
       bts[i] = byte(i);
     }
     bts2[900] = 0xFF;
+    myAddr = 0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa;
+    qqq = 1422;
+    qqq1 = 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;
+    qqq2 = 26;
   }
 
   function doSomething() public {
