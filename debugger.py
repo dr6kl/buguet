@@ -334,28 +334,32 @@ class Debugger:
         else:
             return "Variable not found"
 
+    def eval_storage_string(self, address):
+        data = self.get_storage_at_address(address)
+        data_int = (int).from_bytes(data, 'big')
+        large_string = data_int & 0x1
+        if large_string:
+            str_length = (data_int - 1) // 2
+            s = sha3.keccak_256()
+            s.update(address)
+            large_str_address = s.digest()
+            result = ''
+            for i in range(0, str_length // 32 + 1):
+                address = (int.from_bytes(large_str_address, byteorder='big') + i).to_bytes(32, byteorder='big')
+                slot_value = self.get_storage_at_address(address)
+                slot_value = str(slot_value[:str_length - i*32], 'utf8')
+                result += slot_value
+        else:
+            str_length = (data_int & 0xFF) // 2
+            result = str(data[:str_length], "utf8")
+
+        return result
+
     def eval_contract_variable(self, contract, var, keys):
         slot = var['location']
         address = slot.to_bytes(32, byteorder='big')
         if regex.match("string", var['type']):
-            res = self.get_storage_at_address(address)
-            res_int = (int).from_bytes(res, 'big')
-            large_string = res_int & 0x1
-            if large_string:
-                str_length = (res_int - 1) // 2
-                s = sha3.keccak_256()
-                s.update(address)
-                res = ''
-                for i in range(0, str_length // 32 + 1):
-                    address = (int.from_bytes(s.digest(), byteorder='big') + i).to_bytes(32, byteorder='big')
-                    slot_value = self.get_storage_at_address(address)
-                    slot_value = str(slot_value[:str_length - i*32], 'utf8')
-                    res += slot_value
-            else:
-                str_length = (res_int & 0xFF) // 2
-                res = str(res[:str_length], "utf8")
-
-            return res
+            return self.eval_storage_string(address)
         else:
             for k in keys:
                 string_match = regex.match(r"\"(.*)\"", k)
