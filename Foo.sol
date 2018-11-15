@@ -7,6 +7,8 @@ contract Foo {
   uint256 cnt;
   string str;
   string str2;
+  bytes bts;
+  bytes bts2;
   mapping (string => uint256) myMap;
   mapping (string => mapping(string => uint256)) myMap2;
   uint256[] myArray;
@@ -27,6 +29,13 @@ contract Foo {
     aaa3 = 103;
     str = "hello world hello world";
     str2 = "hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world xxx";
+    bts.length = 13;
+    bts2.length = 1000;
+    uint i;
+    for (i = 0; i < 13; i++) {
+      bts[i] = byte(i);
+    }
+    bts2[900] = 0xFF;
   }
 
   function doSomething() public {
