@@ -35,22 +35,31 @@ class Contract:
             if x['name'] == 'VariableDeclaration':
                 storage_var = StorageVariable(
                         x['attributes']['name'],
-                        SolidityType.parse(x['attributes']['type'])
+                        SolidityType.parse(x['children'][0])
                 )
                 self.variables.append(storage_var)
+        # beeprint.pp(self.variables)
+        # pdb.set_trace()
 
     def set_storage_locations(self):
         current_storage_idx = 0
         bits_consumed = 0
+
         for i, var in enumerate(self.variables):
-            bits_consumed += var.var_type.size
+            if var.var_type.type_name == 'fixed_array':
+                if bits_consumed > 0:
+                    current_storage_idx += 1
+                    bits_consumed = 0
+                var.location = current_storage_idx
+                current_storage_idx += var.var_type.size // 256
+            else:
+                if bits_consumed > 0 and bits_consumed + var.var_type.size > 256:
+                    bits_consumed = 0
+                    current_storage_idx += 1
 
-            if bits_consumed > 256:
-                bits_consumed = var.var_type.size
-                current_storage_idx += 1
-
-            self.variables[i].location = current_storage_idx
-            self.variables[i].offset = bits_consumed - var.var_type.size
+                var.location = current_storage_idx
+                var.offset = bits_consumed
+                bits_consumed += var.var_type.size
 
     def find_variable(self, var_name):
         for v in self.variables:
@@ -105,16 +114,18 @@ class SolidityType:
         self.size = size;
 
     @classmethod
-    def parse(cls, type_str):
-        match = regex.match("(u?int)(\d+)", type_str)
+    def parse(cls, type_ast):
+        type_str = type_ast['attributes']['type']
+
+        match = regex.match("^(u?int)(\d+)$", type_str)
         if match:
             return cls(match.group(1), int(match.group(2)))
 
-        match = regex.match("bool", type_str)
+        match = regex.match("^bool$", type_str)
         if match:
             return cls('bool', 8)
 
-        match = regex.match("bytes(\d+)", type_str)
+        match = regex.match("^bytes(\d+)$", type_str)
         if match:
             return cls('fixed_bytes', int(match.group(1)) * 8)
 
@@ -130,22 +141,31 @@ class SolidityType:
         if match:
             return cls('address', 160)
 
-        match = regex.match("mapping.*", type_str)
-        if match:
-            return cls('map', 256)
+        if type_ast['name'] == 'ArrayTypeName':
+            if len(type_ast['children']) == 2:
+                length = int(type_ast['children'][1]['attributes']['value'])
+                elemType = SolidityType.parse(type_ast['children'][0])
+                return SolidityFixedArrayType(elemType, length)
+            else:
+                result = cls('array', 256)
+                result.element_type = SolidityType.parse(type_ast['children'][0])
+                return result
 
-        match = regex.match(".*\[\].*", type_str)
-        if match:
-            return cls('array', 256)
+        if type_ast['name'] == 'Mapping':
+            result = cls('map', 256)
+            result.key_type = SolidityType.parse(type_ast['children'][0])
+            result.value_type = SolidityType.parse(type_ast['children'][1])
+            return result
 
-    def is_fixedsize(self):
+
+    def is_simple_type(self):
         return self.type_name in ['int', 'uint', 'fixed_bytes', 'bool', 'address']
 
     def as_string(self, bytes_value):
         if self.type_name == 'int':
-            return (int).from_bytes(bytes_value, 'big')
+            return str((int).from_bytes(bytes_value, 'big'))
         if self.type_name == 'uint':
-            return (int).from_bytes(bytes_value, 'big')
+            return str((int).from_bytes(bytes_value, 'big'))
         if self.type_name == 'bool':
             if (int).from_bytes(bytes_value, 'big') == 1:
                 return 'true'
@@ -161,6 +181,35 @@ class SolidityType:
             return '0x' + bytes_value.hex()
 
         return bytes_value.hex()
+
+class SolidityFixedArrayType(SolidityType):
+    def __init__(self, element_type, length):
+        self.type_name = 'fixed_array';
+        self.element_type = element_type
+        self.length = length
+        elem_size = element_type.size
+        if elem_size < 256:
+            elems_per_slot = (256 // elem_size)
+            self.size = ((length + elems_per_slot - 1) // elems_per_slot) * 256
+        else:
+            slot_per_elems = elem_size // 256
+            self.size = length * slot_per_elems * 256
+
+
+    def location_for(self, idx):
+        if self.element_type.size < 256:
+            elems_per_slot = (256 // self.element_type.size)
+            return idx // elems_per_slot
+        else:
+            slot_per_elems = self.element_type.size // 256
+            return idx * slot_per_elems
+
+    def offset_for(self, idx):
+        if self.element_type.size < 256:
+            elems_per_slot = (256 // self.element_type.size)
+            return (idx % elems_per_slot) * self.element_type.size
+        else:
+            return 0
 
 class Debugger:
     def __init__(self, web3, contract_data, transaction_id, source):
@@ -416,11 +465,31 @@ class Debugger:
 
         return result
 
+    def eval_contract_variable_fixed_array(self, contract, var, keys):
+        if len(keys) > 0:
+            idx = int(keys[0])
+            return self.eval_contract_variable_fixed_array_at_idx(contract, var, keys[1:], idx)
+        else:
+            result = '['
+            for i in range(0, var.var_type.length):
+                result += self.eval_contract_variable_fixed_array_at_idx(contract, var, [], i)
+                if i < var.var_type.length - 1:
+                    result += ','
+            result += ']'
+            return result
+
+    def eval_contract_variable_fixed_array_at_idx(self, contract, var, keys, idx):
+        element_type = var.var_type.element_type
+        new_var = StorageVariable(None, element_type)
+        new_var.location = var.location + var.var_type.location_for(idx)
+        new_var.offset = var.var_type.offset_for(idx)
+        return self.eval_contract_variable(contract, new_var, keys)
+
     def eval_contract_variable(self, contract, var, keys):
         slot = var.location
         address = slot.to_bytes(32, byteorder='big')
 
-        if var.var_type.is_fixedsize():
+        if var.var_type.is_simple_type():
             result = self.get_storage_at_address(address)
 
             if var.offset != 0 or var.var_type.size != 256:
@@ -429,23 +498,32 @@ class Debugger:
                 result = result_int.to_bytes(32, byteorder='big')
         elif var.var_type.type_name in ['string', 'bytes']:
             result = self.eval_storage_var_string_or_bytes(address)
-        else:
-            for k in keys:
-                string_match = regex.match(r"\"(.*)\"", k)
-                int_match = regex.match(r"\d+", k)
-                if string_match:
-                    k = string_match.group(1)
-                    s = sha3.keccak_256()
-                    s.update(bytes(k, 'utf-8'))
-                    s.update(address)
-                    address = s.digest()
-                elif int_match:
-                    k = int(k)
-                    s = sha3.keccak_256()
-                    s.update(address)
-                    address = (int.from_bytes(s.digest(), byteorder='big') + k).to_bytes(32, byteorder='big')
-
-            result = self.get_storage_at_address(address)
+        elif var.var_type.type_name == 'fixed_array':
+            return self.eval_contract_variable_fixed_array(contract, var, keys)
+        elif var.var_type.type_name == 'map':
+            key_match = regex.match(r"\"(.*)\"", keys[0])
+            if key_match:
+                k = key_match.group(1)
+                s = sha3.keccak_256()
+                s.update(bytes(k, 'utf-8'))
+                s.update(address)
+                value_address = s.digest()
+                value_type = var.var_type.value_type
+                new_var = StorageVariable(None, value_type)
+                new_var.location = int.from_bytes(value_address, 'big')
+                new_var.offset = 0
+                return self.eval_contract_variable(contract, new_var, keys[1:])
+            else:
+                return None
+        elif var.var_type.type_name == 'array':
+            idx = int(keys[0])
+            s = sha3.keccak_256()
+            s.update(address)
+            elem_address = int.from_bytes(s.digest(), byteorder='big') + idx
+            new_var = StorageVariable(None, var.var_type.element_type)
+            new_var.location = elem_address
+            new_var.offset = 0
+            return self.eval_contract_variable(contract, new_var, keys[1:])
 
         return var.var_type.as_string(result)
 

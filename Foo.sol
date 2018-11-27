@@ -13,13 +13,15 @@ contract Foo {
   int16 qqq;
   string str;
   string str2;
+  uint8[2][13][15][100] arr_aa;
+  uint96[10] arr;
   bytes24 qqq1;
   int8 qqq2;
   bytes bts;
   bytes bts2;
   mapping (string => uint256) myMap;
   mapping (string => mapping(string => uint256)) myMap2;
-  uint256[] myArray;
+  uint8[] myArray;
   mapping(string => uint256[]) aaa;
   mapping(string => uint256)[] bbb;
 
@@ -51,6 +53,12 @@ contract Foo {
     qqq = 1422;
     qqq1 = 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;
     qqq2 = 26;
+    arr[1] = 12;
+    arr[2] = 100;
+    arr_aa[4][3][2][1] = 15;
+    //for (i = 0; i < 100; i++) {
+      //arr[i] = uint8(i);
+    //}
   }
 
   function doSomething() public {
@@ -58,6 +66,8 @@ contract Foo {
   }
 
   function myfunc() internal returns (uint256) {
+    cnt += arr[3];
+
     uint a = myMap2["foo"]["bar"];
     if (aaa2 > 0) {
       a += 1;
