@@ -21,43 +21,108 @@ web3.middleware_stack.inject(geth_poa_middleware, layer=0)
 # web3.eth.defaultAccount = web3.eth.accounts[0]
 class Contract:
     def __init__(self):
+        self.struct_asts = {}
         self.variables = []
         self.functions = []
 
     def parse_ast(self, item):
         self.src = list(map(lambda x: int(x), item['src'].split(":")))
         self.name = item['attributes']['name']
+
+        for x in item['children']:
+            if x['name'] == 'StructDefinition':
+                self.struct_asts[x['attributes']['name']] = x
+
         for x in item['children']:
             if x['name'] == 'FunctionDefinition':
                 func = Function()
                 func.parse_ast(x)
                 self.functions.append(func)
             if x['name'] == 'VariableDeclaration':
-                storage_var = StorageVariable(
-                        x['attributes']['name'],
-                        SolidityType.parse(x['children'][0])
-                )
-                self.variables.append(storage_var)
-        # beeprint.pp(self.variables)
-        # pdb.set_trace()
+                self.variables.append(self.parse_variable(x))
+        self.set_locations(self)
+        beeprint.pp(self.variables)
 
-    def set_storage_locations(self):
-        current_storage_idx = 0
+    def parse_variable(self, ast):
+        return Variable(
+                ast['attributes']['name'],
+                self.parse_type(ast['children'][0])
+        )
+
+    def parse_type(self, type_ast):
+        type_str = type_ast['attributes']['type']
+
+        match = regex.match("^(u?int)(\d+)$", type_str)
+        if match:
+            return SolidityType(match.group(1), int(match.group(2)))
+
+        match = regex.match("^bool$", type_str)
+        if match:
+            return SolidityType('bool', 8)
+
+        match = regex.match("^bytes(\d+)$", type_str)
+        if match:
+            return SolidityType('fixed_bytes', int(match.group(1)) * 8)
+
+        match = regex.match("bytes.*", type_str)
+        if match:
+            return SolidityType('bytes', 256)
+
+        match = regex.match("string.*", type_str)
+        if match:
+            return SolidityType('string', 256)
+
+        match = regex.match("address", type_str)
+        if match:
+            return SolidityType('address', 160)
+
+        if type_ast['name'] == 'ArrayTypeName':
+            if len(type_ast['children']) == 2:
+                length = int(type_ast['children'][1]['attributes']['value'])
+                elemType = self.parse_type(type_ast['children'][0])
+                return SolidityFixedArrayType(elemType, length)
+            else:
+                result = SolidityType('array', 256)
+                result.element_type = self.parse_type(type_ast['children'][0])
+                return result
+
+        if type_ast['name'] == 'Mapping':
+            result = SolidityType('map', 256)
+            result.key_type = self.parse_type(type_ast['children'][0])
+            result.value_type = self.parse_type(type_ast['children'][1])
+            return result
+
+        if type_ast['name'] == 'UserDefinedTypeName':
+            struct_name = type_ast['attributes']['name']
+            struct_ast = self.struct_asts[struct_name]
+            result = SolidityStructType(struct_name)
+            result.variables = []
+            for field in struct_ast['children']:
+                if field['name'] == 'VariableDeclaration':
+                    var = self.parse_variable(field)
+                    result.variables.append(var)
+            self.set_locations(result)
+            result.init_size()
+            return result
+
+    def set_locations(self, obj):
+        location = 0
         bits_consumed = 0
 
-        for i, var in enumerate(self.variables):
-            if var.var_type.type_name == 'fixed_array':
+        for i, var in enumerate(obj.variables):
+            if var.var_type.type_name in ['fixed_array', 'struct']:
                 if bits_consumed > 0:
-                    current_storage_idx += 1
+                    location += 1
                     bits_consumed = 0
-                var.location = current_storage_idx
-                current_storage_idx += var.var_type.size // 256
+                var.location = location
+                var.offset = 0
+                location += var.var_type.size // 256
             else:
                 if bits_consumed > 0 and bits_consumed + var.var_type.size > 256:
                     bits_consumed = 0
-                    current_storage_idx += 1
+                    location += 1
 
-                var.location = current_storage_idx
+                var.location = location
                 var.offset = bits_consumed
                 bits_consumed += var.var_type.size
 
@@ -102,7 +167,7 @@ class Function:
                     result.append(var_name)
         return result
 
-class StorageVariable:
+class Variable:
     def __init__(self, name, var_type):
         self.name = name;
         self.var_type = var_type;
@@ -112,51 +177,6 @@ class SolidityType:
     def __init__(self, type_name, size):
         self.type_name = type_name;
         self.size = size;
-
-    @classmethod
-    def parse(cls, type_ast):
-        type_str = type_ast['attributes']['type']
-
-        match = regex.match("^(u?int)(\d+)$", type_str)
-        if match:
-            return cls(match.group(1), int(match.group(2)))
-
-        match = regex.match("^bool$", type_str)
-        if match:
-            return cls('bool', 8)
-
-        match = regex.match("^bytes(\d+)$", type_str)
-        if match:
-            return cls('fixed_bytes', int(match.group(1)) * 8)
-
-        match = regex.match("bytes.*", type_str)
-        if match:
-            return cls('bytes', 256)
-
-        match = regex.match("string.*", type_str)
-        if match:
-            return cls('string', 256)
-
-        match = regex.match("address", type_str)
-        if match:
-            return cls('address', 160)
-
-        if type_ast['name'] == 'ArrayTypeName':
-            if len(type_ast['children']) == 2:
-                length = int(type_ast['children'][1]['attributes']['value'])
-                elemType = SolidityType.parse(type_ast['children'][0])
-                return SolidityFixedArrayType(elemType, length)
-            else:
-                result = cls('array', 256)
-                result.element_type = SolidityType.parse(type_ast['children'][0])
-                return result
-
-        if type_ast['name'] == 'Mapping':
-            result = cls('map', 256)
-            result.key_type = SolidityType.parse(type_ast['children'][0])
-            result.value_type = SolidityType.parse(type_ast['children'][1])
-            return result
-
 
     def is_simple_type(self):
         return self.type_name in ['int', 'uint', 'fixed_bytes', 'bool', 'address']
@@ -211,6 +231,15 @@ class SolidityFixedArrayType(SolidityType):
         else:
             return 0
 
+class SolidityStructType(SolidityType):
+    def __init__(self, struct_name):
+        self.type_name = 'struct'
+        self.struct_name = struct_name
+
+    def init_size(self):
+        last_var = self.variables[-1]
+        self.size = (last_var.location + ((last_var.var_type.size + 255) // 256)) * 256
+
 class Debugger:
     def __init__(self, web3, contract_data, transaction_id, source):
         self.web3 = web3;
@@ -239,7 +268,6 @@ class Debugger:
             if c['name'] == 'ContractDefinition':
                 contract = Contract()
                 contract.parse_ast(c)
-                contract.set_storage_locations()
                 self.contracts.append(contract)
 
     def load_transaction(self):
@@ -412,10 +440,17 @@ class Debugger:
         return line_num
 
     def parse_expression(self, str):
-        m = regex.match(r"^(.+?)(?:\[(.+?)\])*$", str)
+        m = regex.match(r"^(.+?)((\[(.+?)\])|(\.(.+?)))*$", str)
         if not m:
             return None
-        return m.captures(1) + m.captures(2)
+        result = []
+        result.append(m.captures(1)[0])
+        for capture in m.captures(2):
+            if capture.startswith("["):
+                result.append(capture[1:-1])
+            else:
+                result.append(capture[1:])
+        return result
 
     def eval(self, line):
         expr = self.parse_expression(line)
@@ -480,7 +515,7 @@ class Debugger:
 
     def eval_contract_variable_fixed_array_at_idx(self, contract, var, keys, idx):
         element_type = var.var_type.element_type
-        new_var = StorageVariable(None, element_type)
+        new_var = Variable(None, element_type)
         new_var.location = var.location + var.var_type.location_for(idx)
         new_var.offset = var.var_type.offset_for(idx)
         return self.eval_contract_variable(contract, new_var, keys)
@@ -509,18 +544,39 @@ class Debugger:
                 s.update(address)
                 value_address = s.digest()
                 value_type = var.var_type.value_type
-                new_var = StorageVariable(None, value_type)
+                new_var = Variable(None, value_type)
                 new_var.location = int.from_bytes(value_address, 'big')
                 new_var.offset = 0
                 return self.eval_contract_variable(contract, new_var, keys[1:])
             else:
                 return None
+        elif var.var_type.type_name == 'struct':
+            if keys:
+                key = keys[0]
+                for field in var.var_type.variables:
+                    if field.name == key:
+                        new_var = Variable(field.name, field.var_type)
+                        new_var.location = var.location + field.location
+                        new_var.offset = field.offset
+                        return self.eval_contract_variable(contract, new_var, keys[1:])
+            else:
+                result = '{'
+                for i, field in enumerate(var.var_type.variables):
+                    result += field.name + '='
+                    new_var = Variable(field.name, field.var_type)
+                    new_var.location = var.location + field.location
+                    new_var.offset = field.offset
+                    result += self.eval_contract_variable(contract, new_var, [])
+                    if i < len(var.var_type.variables) - 1:
+                        result += ';'
+                result += '}'
+                return result
         elif var.var_type.type_name == 'array':
             idx = int(keys[0])
             s = sha3.keccak_256()
             s.update(address)
             elem_address = int.from_bytes(s.digest(), byteorder='big') + idx
-            new_var = StorageVariable(None, var.var_type.element_type)
+            new_var = Variable(None, var.var_type.element_type)
             new_var.location = elem_address
             new_var.offset = 0
             return self.eval_contract_variable(contract, new_var, keys[1:])

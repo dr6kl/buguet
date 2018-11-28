@@ -1,6 +1,21 @@
 pragma solidity ^0.4.13;
 
 contract Foo {
+  MyStruct strct1;
+
+  struct MyStruct {
+    uint8 a;
+    uint32 b;
+    string c;
+    address d;
+    MyStruct2 e;
+  }
+
+  struct MyStruct2 {
+    uint a;
+    uint b;
+  }
+
   uint8 aaa1;
   uint8 aaa2;
   bool flag;
@@ -12,6 +27,7 @@ contract Foo {
   uint zz;
   int16 qqq;
   string str;
+  MyStruct strct;
   string str2;
   uint8[2][13][15][100] arr_aa;
   uint96[10] arr;
@@ -19,6 +35,8 @@ contract Foo {
   int8 qqq2;
   bytes bts;
   bytes bts2;
+  mapping (string => MyStruct) zz1;
+  mapping (string => MyStruct[]) zz2;
   mapping (string => uint256) myMap;
   mapping (string => mapping(string => uint256)) myMap2;
   uint8[] myArray;
@@ -59,6 +77,23 @@ contract Foo {
     //for (i = 0; i < 100; i++) {
       //arr[i] = uint8(i);
     //}
+    strct1.a = 3;
+    strct1.b = 24;
+    strct1.c = "hello world";
+    strct1.d = 0xbAAaaaaaAAaAAaaAaAaAaaaaaaaaaaaaaaaAAAAb;
+    strct1.e.a = 12;
+    strct1.e.b = 34;
+
+    strct.a = 4;
+    strct.b = 25;
+    strct.c = "hello world 1";
+    strct.d = 0xbAAaaaaaAAaAAaaAaAaAaaaaaaaaaaaaaaaAAAAb;
+    strct.e.a = 13;
+    strct.e.b = 35;
+
+    zz1["foo"].e.a = 15;
+    zz2["foo"].push(strct);
+    zz2["foo"].push(strct1);
   }
 
   function doSomething() public {
