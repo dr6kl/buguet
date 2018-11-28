@@ -216,20 +216,6 @@ class SolidityFixedArrayType(SolidityType):
             self.size = length * slot_per_elems * 256
 
 
-    def location_for(self, idx):
-        if self.element_type.size < 256:
-            elems_per_slot = (256 // self.element_type.size)
-            return idx // elems_per_slot
-        else:
-            slot_per_elems = self.element_type.size // 256
-            return idx * slot_per_elems
-
-    def offset_for(self, idx):
-        if self.element_type.size < 256:
-            elems_per_slot = (256 // self.element_type.size)
-            return (idx % elems_per_slot) * self.element_type.size
-        else:
-            return 0
 
 class SolidityStructType(SolidityType):
     def __init__(self, struct_name):
@@ -516,9 +502,21 @@ class Debugger:
     def eval_contract_variable_fixed_array_at_idx(self, contract, var, keys, idx):
         element_type = var.var_type.element_type
         new_var = Variable(None, element_type)
-        new_var.location = var.location + var.var_type.location_for(idx)
-        new_var.offset = var.var_type.offset_for(idx)
+        location, offset = self.location_and_offset_for_array_idx(var.var_type, idx)
+        new_var.location = var.location + location
+        new_var.offset = offset
         return self.eval_contract_variable(contract, new_var, keys)
+
+    def location_and_offset_for_array_idx(self, arr, idx):
+        if arr.element_type.size < 256:
+            elems_per_slot = (256 // arr.element_type.size)
+            location = idx // elems_per_slot
+            offset = (idx % elems_per_slot) * arr.element_type.size
+        else:
+            slot_per_elems = arr.element_type.size // 256
+            location = idx * slot_per_elems
+            offset = 0
+        return [location, offset]
 
     def eval_contract_variable(self, contract, var, keys):
         slot = var.location
@@ -575,10 +573,11 @@ class Debugger:
             idx = int(keys[0])
             s = sha3.keccak_256()
             s.update(address)
-            elem_address = int.from_bytes(s.digest(), byteorder='big') + idx
+            elem_address = int.from_bytes(s.digest(), byteorder='big')
+            location, offset = self.location_and_offset_for_array_idx(var.var_type, idx)
             new_var = Variable(None, var.var_type.element_type)
-            new_var.location = elem_address
-            new_var.offset = 0
+            new_var.location = elem_address + location
+            new_var.offset = offset
             return self.eval_contract_variable(contract, new_var, keys[1:])
 
         return var.var_type.as_string(result)
