@@ -28,7 +28,6 @@ class ContractDataLoader:
 
         contract = Contract(name, src, functions, variables)
         self.set_locations(contract)
-        beeprint.pp(contract.functions, max_depth=100)
         return contract
 
     def load_struct_asts(self):
@@ -165,6 +164,10 @@ class ContractDataLoader:
                     if node['name'] == 'VariableDeclaration':
                         local_vars.append(self.parse_variable(node))
                 self.traverse_all(x, lambda x: process_function_node(x))
+        for i, p in enumerate(params):
+            params[i].location = i
+        for i, p in enumerate(local_vars):
+           local_vars[i].location = i
         return Function(name, src, params, local_vars)
 
     def traverse_all(self, node, f):

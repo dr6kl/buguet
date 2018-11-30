@@ -19,6 +19,23 @@ class Function:
         self.src = src
         self.params = params
         self.local_vars = local_vars
+        self._params_by_name = {}
+        self._local_vars_by_name = {}
+
+    @property
+    def params_by_name(self):
+        if not self._params_by_name:
+            for var in self.params:
+                self._params_by_name[var.name] = var
+        return self._params_by_name
+
+    @property
+    def local_vars_by_name(self):
+        if not self._local_vars_by_name:
+            for var in self.local_vars:
+                self._local_vars_by_name[var.name] = var
+        return self._local_vars_by_name
+
 
 class Variable:
     def __init__(self, var_type, name=None, location=None, offset=None):

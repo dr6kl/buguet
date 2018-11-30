@@ -231,20 +231,22 @@ class Debugger:
         contract = self.current_contract()
         function = self.current_func(contract)
 
-        bp = self.bp_stack[len(self.bp_stack) - 1]
+        bp = self.bp_stack[-1]
 
-        if var_name in function.params:
-            params = function['params']
-            param_idx = len(params) - params.index(var_name) - 1
-            param_location = bp - param_idx - 1
-            return self.current_op().stack[param_location]
-        elif var_name in function.local_vars:
-            location = bp + function.local_vars.index(var_name) + 1
-            return self.current_op().stack[location]
+        if var_name in function.params_by_name:
+            var = function.params_by_name[var_name]
+            param_location = bp - len(function.params) + var.location
+            data = self.current_op().stack[param_location]
+            return self.elementary_type_as_obj(var.var_type, bytes.fromhex(data))
+        elif var_name in function.local_vars_by_name:
+            var = function.local_vars_by_name[var_name]
+            location = bp + var.location + 1
+            data = self.current_op().stack[location]
+            return self.elementary_type_as_obj(var.var_type, bytes.fromhex(data))
         elif var_name in contract.variables_by_name:
             return self.eval_contract_variable(contract.variables_by_name[var_name], keys)
         else:
-            return "Variable not found"
+            return "Can not evaluate expression"
 
     def eval_storage_var_string_or_bytes(self, address):
         data = self.get_storage_at_address(address)
