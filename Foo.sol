@@ -135,6 +135,17 @@ contract Foo {
 
   function foo(uint a, uint b, uint c) internal returns (uint) {
     uint d;
+    MyStruct sss;
+    sss = strct1;
+    sss.a = 19;
+    sss = strct;
+    sss.a = 26;
+    //uint8[10] k;
+    //k[0] = 55;
+    //k[2] = 93;
+    //k[8] = 5;
+    uint8 l = 6;
+    uint256 vvv = 8;
     d = bar(a+b, a-b, c);
     return d - 10;
   }
