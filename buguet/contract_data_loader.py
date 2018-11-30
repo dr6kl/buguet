@@ -157,18 +157,29 @@ class ContractDataLoader:
                         if y['name'] == 'VariableDeclaration':
                             var_name = y['attributes']['name']
                             if var_name:
-                                params.append(self.parse_variable(y))
+                                params.append(self.parse_function_variable(y))
             if x['name'] == 'Block':
                 local_vars = []
                 def process_function_node(node):
                     if node['name'] == 'VariableDeclaration':
-                        local_vars.append(self.parse_variable(node))
+                        local_vars.append(self.parse_function_variable(node))
                 self.traverse_all(x, lambda x: process_function_node(x))
         for i, p in enumerate(params):
             params[i].location = i
         for i, p in enumerate(local_vars):
            local_vars[i].location = i
         return Function(name, src, params, local_vars)
+
+    def parse_function_variable(self, ast):
+        if 'memory' in ast['attributes']['type']:
+            location_type = 'memory'
+        elif 'storage' in ast['attributes']['type']:
+            location_type = 'storage'
+        else:
+            location_type = None
+        var = self.parse_variable(ast)
+        var.location_type = location_type
+        return var
 
     def traverse_all(self, node, f):
         f(node)

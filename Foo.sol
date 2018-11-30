@@ -135,16 +135,27 @@ contract Foo {
 
   function foo(uint a, uint b, uint c) internal returns (uint) {
     uint d;
-    MyStruct sss;
-    sss = strct1;
-    sss.a = 19;
+    uint[] memory ee = new uint[](7);
+    //string memory hh;
+    //string storage hh1;
+    //string hh2;
+    ee[3] = 502;
+    MyStruct[] memory gg = new MyStruct[](7);
+    MyStruct storage sss;
+
+    //sss = strct1;
+    //sss.a = 19;
     sss = strct;
-    sss.a = 26;
+    //sss.a = 26;
+
+    gg[3] = sss;
+    //uint w = gg[0].a;
     //uint8[10] k;
     //k[0] = 55;
     //k[2] = 93;
     //k[8] = 5;
     uint8 l = 6;
+    ee[5] = 14;
     uint256 vvv = 8;
     d = bar(a+b, a-b, c);
     return d - 10;

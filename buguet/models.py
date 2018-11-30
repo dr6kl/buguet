@@ -38,11 +38,12 @@ class Function:
 
 
 class Variable:
-    def __init__(self, var_type, name=None, location=None, offset=None):
+    def __init__(self, var_type, name=None, location=None, offset=None, location_type=None):
         self.name = name
         self.var_type = var_type
         self.location = location
         self.offset = offset
+        self.location_type = location_type
 
 class Int:
     def __init__(self, size):

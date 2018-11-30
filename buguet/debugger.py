@@ -235,20 +235,51 @@ class Debugger:
 
         if var_name in function.params_by_name:
             var = function.params_by_name[var_name]
-            param_location = bp - len(function.params) + var.location
-            data = self.current_op().stack[param_location]
-            return self.elementary_type_as_obj(var.var_type, bytes.fromhex(data))
+            location = bp - len(function.params) + var.location
+            new_var = Variable(var.var_type, location = location, location_type = var.location_type)
+            return self.eval_stack(new_var, keys)
         elif var_name in function.local_vars_by_name:
             var = function.local_vars_by_name[var_name]
             location = bp + var.location + 1
-            data = self.current_op().stack[location]
-            return self.elementary_type_as_obj(var.var_type, bytes.fromhex(data))
+            new_var = Variable(var.var_type, location = location, location_type = var.location_type)
+            return self.eval_stack(new_var, keys)
         elif var_name in contract.variables_by_name:
-            return self.eval_contract_variable(contract.variables_by_name[var_name], keys)
+            var = contract.variables_by_name[var_name]
+            return self.eval_storage(var, keys)
         else:
             return "Can not evaluate expression"
 
-    def eval_storage_var_string_or_bytes(self, address):
+    def eval_stack(self, var, keys):
+        data = bytes.fromhex(self.current_op().stack[var.location])
+        if type(var.var_type) in [Int, Uint, FixedBytes, Bool, Address]:
+            return self.elementary_type_as_obj(var.var_type, data)
+        else:
+            location = (int).from_bytes(data, 'big')
+            new_var = Variable(var.var_type, location = location, offset = 0)
+            if var.location_type == 'memory':
+                return self.eval_memory(new_var, keys)
+            elif var.location_type == 'storage':
+                return self.eval_storage(new_var, keys)
+
+    def eval_memory(self, var, keys):
+        if type(var.var_type) in [Int, Uint, FixedBytes, Bool, Address]:
+            return self.eval_memory_elementary_type(var)
+        if type(var.var_type) is Array:
+            return self.eval_memory_array(var, keys)
+
+    def eval_memory_elementary_type(self, var):
+        mem = self.struct_logs[self.position]['memory']
+        data = bytes.fromhex(mem[var.location//32])
+        return self.elementary_type_as_obj(var.var_type, data)
+
+    def eval_memory_array(self, var, keys):
+        if keys:
+            idx = int(keys[0])
+            new_var = Variable(var.var_type.element_type, location = var.location + (idx + 1) * 32)
+            return self.eval_memory(new_var, keys[1:])
+
+    def eval_storage_string_or_bytes(self, var):
+        address = var.location.to_bytes(32, 'big')
         data = self.get_storage_at_address(address)
         data_int = (int).from_bytes(data, 'big')
         large_string = data_int & 0x1
@@ -267,26 +298,26 @@ class Debugger:
             bytes_length = (data_int & 0xFF) // 2
             result = data[:bytes_length]
 
-        return result
+        return self.elementary_type_as_obj(var.var_type, result)
 
-    def eval_contract_variable_fixed_array(self, var, keys):
+    def eval_storage_fixed_array(self, var, keys):
         if keys:
             idx = int(keys[0])
-            return self.eval_contract_variable_fixed_array_at_idx(var, keys[1:], idx)
+            return self.eval_storage_fixed_array_at_idx(var, keys[1:], idx)
         else:
             result = []
             for i in range(0, var.var_type.length):
-                result.append(self.eval_contract_variable_fixed_array_at_idx(var, [], i))
+                result.append(self.eval_storage_fixed_array_at_idx(var, [], i))
             return result
 
-    def eval_contract_variable_fixed_array_at_idx(self, var, keys, idx):
+    def eval_storage_fixed_array_at_idx(self, var, keys, idx):
         element_type = var.var_type.element_type
         rel_location, offset = self.location_and_offset_for_array_idx(var.var_type, idx)
         location = var.location + rel_location
         new_var = Variable(element_type, location = location, offset = offset)
-        return self.eval_contract_variable(new_var, keys)
+        return self.eval_storage(new_var, keys)
 
-    def eval_contract_variable_map(self, var, keys):
+    def eval_storage_map(self, var, keys):
         if not keys:
             return "Mapping"
         key_match = regex.match(r"\"(.*)\"", keys[0])
@@ -299,29 +330,29 @@ class Debugger:
             value_type = var.var_type.value_type
             location = int.from_bytes(value_address, 'big')
             new_var = Variable(value_type, location = location, offset = 0)
-            return self.eval_contract_variable(new_var, keys[1:])
+            return self.eval_storage(new_var, keys[1:])
         else:
             return None
 
-    def eval_contract_variable_struct(self, var, keys):
+    def eval_storage_struct(self, var, keys):
         if keys:
             key = keys[0]
             for field in var.var_type.variables:
                 if field.name == key:
                     location = var.location + field.location
                     new_var = Variable(field.var_type, location = location, offset = field.offset)
-                    return self.eval_contract_variable(new_var, keys[1:])
+                    return self.eval_storage(new_var, keys[1:])
         else:
             result = {}
             for field in var.var_type.variables:
                 location = var.location + field.location
                 offset = field.offset
                 new_var = Variable(field.var_type, location = location, offset = offset)
-                value = self.eval_contract_variable(new_var, [])
+                value = self.eval_storage(new_var, [])
                 result[field.name] = value
             return result
 
-    def eval_contract_variable_array(self, var, keys):
+    def eval_storage_array(self, var, keys):
         if not keys:
             return "DynamicArray"
         idx = int(keys[0])
@@ -330,7 +361,7 @@ class Debugger:
         elem_address = int.from_bytes(s.digest(), byteorder='big')
         location, offset = self.location_and_offset_for_array_idx(var.var_type, idx)
         new_var = Variable(var.var_type.element_type, location = elem_address + location, offset = offset)
-        return self.eval_contract_variable(new_var, keys[1:])
+        return self.eval_storage(new_var, keys[1:])
 
     def location_and_offset_for_array_idx(self, arr, idx):
         if arr.element_type.size < 256:
@@ -343,26 +374,27 @@ class Debugger:
             offset = 0
         return [location, offset]
 
-    def eval_contract_variable(self, var, keys):
+    def eval_storage_elementary_type(self, var):
         address = var.location.to_bytes(32, byteorder='big')
+        result = self.get_storage_at_address(address)
+        result_int = int.from_bytes(result, byteorder='big')
+        result_int = (result_int >> var.offset) & ((2 << var.var_type.size - 1) - 1)
+        result = result_int.to_bytes(var.var_type.size // 8, byteorder='big')
+        return self.elementary_type_as_obj(var.var_type, result)
 
+    def eval_storage(self, var, keys):
         if type(var.var_type) in [Int, Uint, FixedBytes, Bool, Address]:
-            result = self.get_storage_at_address(address)
-            result_int = int.from_bytes(result, byteorder='big')
-            result_int = (result_int >> var.offset) & ((2 << var.var_type.size - 1) - 1)
-            result = result_int.to_bytes(var.var_type.size // 8, byteorder='big')
-            return self.elementary_type_as_obj(var.var_type, result)
+            return self.eval_storage_elementary_type(var)
         elif type(var.var_type) in [String, Bytes]:
-            result = self.eval_storage_var_string_or_bytes(address)
-            return self.elementary_type_as_obj(var.var_type, result)
+            return self.eval_storage_string_or_bytes(var)
         elif type(var.var_type) is FixedArray:
-            return self.eval_contract_variable_fixed_array(var, keys)
+            return self.eval_storage_fixed_array(var, keys)
         elif type(var.var_type) is Map:
-            return self.eval_contract_variable_map(var, keys)
+            return self.eval_storage_map(var, keys)
         elif type(var.var_type) is Struct:
-            return self.eval_contract_variable_struct(var, keys)
+            return self.eval_storage_struct(var, keys)
         elif type(var.var_type) is Array:
-            return self.eval_contract_variable_array(var, keys)
+            return self.eval_storage_array(var, keys)
 
     def elementary_type_as_obj(self, var_type, data):
         if type(var_type) is Int:
