@@ -261,22 +261,40 @@ class Debugger:
             elif var.location_type == 'storage':
                 return self.eval_storage(new_var, keys)
 
+    def get_memory(self, idx):
+        return bytes.fromhex(self.current_op().memory[idx//32])
+
     def eval_memory(self, var, keys):
         if type(var.var_type) in [Int, Uint, FixedBytes, Bool, Address]:
             return self.eval_memory_elementary_type(var)
-        if type(var.var_type) is Array:
+        if type(var.var_type) in [Array, FixedArray]:
             return self.eval_memory_array(var, keys)
+        if type(var.var_type) is Struct:
+            return self.eval_memory_struct(var, keys)
 
     def eval_memory_elementary_type(self, var):
-        mem = self.struct_logs[self.position]['memory']
-        data = bytes.fromhex(mem[var.location//32])
+        data = self.get_memory(var.location)
         return self.elementary_type_as_obj(var.var_type, data)
 
     def eval_memory_array(self, var, keys):
         if keys:
             idx = int(keys[0])
-            new_var = Variable(var.var_type.element_type, location = var.location + (idx + 1) * 32)
+            addr = var.location + (idx + 1) * 32
+            if not type(var.var_type.element_type) in [Int, Uint, FixedBytes, Bool, Address]:
+                addr = (int).from_bytes(self.get_memory(addr), 'big')
+            new_var = Variable(var.var_type.element_type, location = addr)
             return self.eval_memory(new_var, keys[1:])
+
+    def eval_memory_struct(self, var, keys):
+        if keys:
+            key = keys[0]
+            for i, field in enumerate(var.var_type.variables):
+                if field.name == key:
+                    addr = var.location + i * 32
+                    if not type(field.var_type) in [Int, Uint, FixedBytes, Bool, Address]:
+                        addr = (int).from_bytes(self.get_memory(addr), 'big')
+                    new_var = Variable(field.var_type, location = addr)
+                    return self.eval_memory(new_var, keys[1:])
 
     def eval_storage_string_or_bytes(self, var):
         address = var.location.to_bytes(32, 'big')
