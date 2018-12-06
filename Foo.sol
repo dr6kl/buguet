@@ -141,6 +141,7 @@ contract Foo {
     //string hh2;
     ee[3] = 502;
     MyStruct[] memory gg = new MyStruct[](7);
+    MyStruct[10] memory hh;
     MyStruct storage sss;
 
     //sss = strct1;
@@ -149,6 +150,7 @@ contract Foo {
     //sss.a = 26;
 
     gg[3] = sss;
+    hh[8] = sss;
     //uint w = gg[0].a;
     //uint8[10] k;
     //k[0] = 55;

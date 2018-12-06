@@ -278,8 +278,11 @@ class Debugger:
 
     def eval_memory_array(self, var, keys):
         if keys:
-            idx = int(keys[0])
-            addr = var.location + (idx + 1) * 32
+            if type(var.var_type) == FixedArray:
+                idx = int(keys[0])
+            elif type(var.var_type) == Array:
+                idx = int(keys[0]) + 1
+            addr = var.location + idx * 32
             if not type(var.var_type.element_type) in [Int, Uint, FixedBytes, Bool, Address]:
                 addr = (int).from_bytes(self.get_memory(addr), 'big')
             new_var = Variable(var.var_type.element_type, location = addr)
