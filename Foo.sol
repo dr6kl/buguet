@@ -136,6 +136,11 @@ contract Foo {
   function foo(uint a, uint b, uint c) internal returns (uint) {
     uint d;
     uint[] memory ee = new uint[](7);
+    //string memory mstr = "paaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaap";
+    bytes memory mbytes = new bytes(100);
+    for (uint i = 0; i < 100; i++) {
+      mbytes[i] = 0xaa;
+    }
     //string memory hh;
     //string storage hh1;
     //string hh2;

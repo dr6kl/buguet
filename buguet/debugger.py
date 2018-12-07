@@ -271,6 +271,8 @@ class Debugger:
             return self.eval_memory_array(var, keys)
         if type(var.var_type) is Struct:
             return self.eval_memory_struct(var, keys)
+        if type(var.var_type) in [String, Bytes]:
+            return self.eval_memory_string_or_bytes(var)
 
     def eval_memory_elementary_type(self, var):
         data = self.get_memory(var.location)
@@ -298,6 +300,15 @@ class Debugger:
                         addr = (int).from_bytes(self.get_memory(addr), 'big')
                     new_var = Variable(field.var_type, location = addr)
                     return self.eval_memory(new_var, keys[1:])
+
+    def eval_memory_string_or_bytes(self, var):
+        result = bytes()
+        length = (int).from_bytes(self.get_memory(var.location), 'big')
+        num_memory_words = (length + 31) // 32
+        for i in range(num_memory_words):
+            data = self.get_memory(var.location + (i + 1) * 32)[:length - i*32]
+            result += data
+        return self.elementary_type_as_obj(var.var_type, result)
 
     def eval_storage_string_or_bytes(self, var):
         address = var.location.to_bytes(32, 'big')
