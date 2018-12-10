@@ -248,8 +248,6 @@ class Debugger:
 
         bp = self.bp_stack[-1]
 
-        pdb.set_trace()
-
         if var_name in function.params_by_name:
             var = function.params_by_name[var_name]
             location = bp - len(function.params) + var.location
@@ -307,6 +305,7 @@ class Debugger:
             new_var = Variable(var.var_type.element_type, location = addr)
             return self.eval_memory(new_var, keys[1:])
 
+
     def eval_memory_struct(self, var, keys):
         if keys:
             key = keys[0]
@@ -317,6 +316,11 @@ class Debugger:
                         addr = (int).from_bytes(self.get_memory(addr), 'big')
                     new_var = Variable(field.var_type, location = addr)
                     return self.eval_memory(new_var, keys[1:])
+        else:
+            result = {}
+            for field in var.var_type.variables:
+                result[field.name] = self.eval_memory_struct(var, [field.name])
+            return result
 
     def eval_memory_string_or_bytes(self, var):
         result = bytes()
