@@ -43,7 +43,9 @@ class Debugger:
         self.transaction = self.web3.eth.getTransaction(self.transaction_id)
 
     def load_transaction_trace(self):
+        print("Loading transaction trace...")
         res = self.web3.manager.request_blocking("debug_traceTransaction", [self.transaction_id])
+        print("Done")
         self.struct_logs = res.structLogs
 
     def validate_code(self):
@@ -175,7 +177,7 @@ class Debugger:
             if self.is_ended():
                 return
             for breakpoint_linenumber in self.breakpoints:
-                if breakpoint_linenumber == self.current_line_num():
+                if breakpoint_linenumber == self.current_line_num() + 1:
                     return
 
     def is_ended(self):
@@ -245,6 +247,8 @@ class Debugger:
         function = self.current_func(contract)
 
         bp = self.bp_stack[-1]
+
+        pdb.set_trace()
 
         if var_name in function.params_by_name:
             var = function.params_by_name[var_name]
@@ -485,7 +489,7 @@ class Debugger:
                     elif start < 0 and end > len(line):
                         line = colored(line, 'red')
 
-                res.append([i, line])
+                res.append([i + 1, line])
         return res
 
     def repl(self):

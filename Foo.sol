@@ -124,6 +124,7 @@ contract Foo {
     cnt += d;
 
     uint x = foo(1, 2, 3) + foo1(1, 2, 3);
+    x += foo2(2, strct1, 3);
     if (x > 0) {
       cnt += 1;
     } else {
@@ -133,7 +134,11 @@ contract Foo {
     return 0;
   }
 
-  function foo(uint a, uint b, uint c) internal returns (uint) {
+  function foo2(uint a, MyStruct b, uint c1) internal returns (uint) {
+    return 0;
+  }
+
+  function foo(uint a, uint b, uint c1) internal returns (uint) {
     uint d;
     uint[] memory ee = new uint[](7);
     //string memory mstr = "paaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaap";
@@ -164,7 +169,7 @@ contract Foo {
     uint8 l = 6;
     ee[5] = 14;
     uint256 vvv = 8;
-    d = bar(a+b, a-b, c);
+    d = bar(a+b, a-b, c1);
     return d - 10;
   }
 
