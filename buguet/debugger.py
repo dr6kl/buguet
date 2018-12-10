@@ -143,12 +143,16 @@ class Debugger:
         x = self.current_src_fragment()
         while x == self.current_src_fragment():
             self.advance()
+            if self.is_ended():
+                return
 
     def next(self):
         depth = 0
         start_stack_height = len(self.bp_stack)
         while True:
             self.step()
+            if self.is_ended():
+                return
             if len(self.bp_stack) == start_stack_height:
                 if self.current_src_fragment()['j'] == 'o':
                     self.step()
@@ -158,6 +162,8 @@ class Debugger:
         start_stack_height = len(self.bp_stack)
         while True:
             self.step()
+            if self.is_ended():
+                return
             if len(self.bp_stack) == start_stack_height - 1:
                 if self.current_src_fragment()['j'] == 'o':
                     self.step()
@@ -166,13 +172,20 @@ class Debugger:
     def continu(self):
         while True:
             self.advance()
+            if self.is_ended():
+                return
             for breakpoint_linenumber in self.breakpoints:
                 if breakpoint_linenumber == self.current_line_num():
                     return
 
+    def is_ended(self):
+        return self.position >= len(self.struct_logs)
+
+
     def advance(self):
         self.position += 1
-        self.print_op()
+        if self.is_ended():
+            return
         if self.current_src_fragment()['j'] == 'i':
             self.bp_stack.append(len(self.current_op().stack) - 1)
         if self.current_src_fragment()['j'] == 'o' and len(self.bp_stack) > 0:
@@ -476,7 +489,7 @@ class Debugger:
         return res
 
     def repl(self):
-        while True:
+        while not self.is_ended():
             self.print_lines()
             line = input("Command: ")
             if line == "next" or line == "n":
@@ -487,8 +500,6 @@ class Debugger:
                 self.stepout()
             elif line == "continue" or line == "c":
                 self.continu()
-            elif line == "":
-                self.advance()
             elif line == "stack" or line == "st":
                 self.print_stack()
             elif line == "memory" or line == "mem":
