@@ -265,7 +265,10 @@ class Debugger:
             return "Can not evaluate expression"
 
     def eval_stack(self, var, keys):
-        data = bytes.fromhex(self.current_op().stack[var.location])
+        stack = self.current_op().stack
+        if var.location >= len(stack):
+            return "Variable is not yet initialized"
+        data = bytes.fromhex(stack[var.location])
         if type(var.var_type) in [Int, Uint, FixedBytes, Bool, Address]:
             return self.elementary_type_as_obj(var.var_type, data)
         else:
@@ -304,7 +307,6 @@ class Debugger:
                 addr = (int).from_bytes(self.get_memory(addr), 'big')
             new_var = Variable(var.var_type.element_type, location = addr)
             return self.eval_memory(new_var, keys[1:])
-
 
     def eval_memory_struct(self, var, keys):
         if keys:
