@@ -307,6 +307,15 @@ class Debugger:
                 addr = (int).from_bytes(self.get_memory(addr), 'big')
             new_var = Variable(var.var_type.element_type, location = addr)
             return self.eval_memory(new_var, keys[1:])
+        else:
+            if type(var.var_type) == FixedArray:
+                length = var.var_type.length
+            elif type(var.var_type) == Array:
+                length = (int).from_bytes(self.get_memory(var.location), 'big')
+            result = []
+            for i in range(length):
+                result.append(self.eval_memory(var, [i]))
+            return result
 
     def eval_memory_struct(self, var, keys):
         if keys:
@@ -409,7 +418,11 @@ class Debugger:
 
     def eval_storage_array(self, var, keys):
         if not keys:
-            return "DynamicArray"
+            length = (int).from_bytes(self.get_storage_at_address(var.location.to_bytes(32, 'big')), 'big')
+            result = []
+            for i in range(length):
+                result.append(self.eval_storage_array(var, [i]))
+            return result
         idx = int(keys[0])
         s = sha3.keccak_256()
         s.update(var.location.to_bytes(32, 'big'))
