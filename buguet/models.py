@@ -1,9 +1,12 @@
 class Contract:
-    def __init__(self, name, src, functions, variables):
+    def __init__(self, name, src, functions, variables, pc_to_op_idx, srcmap, bin_runtime):
         self.name = name
         self.src = src
         self.functions = functions
         self.variables = variables
+        self.pc_to_op_idx = pc_to_op_idx
+        self.srcmap = srcmap
+        self.bin_runtime = bin_runtime
         self._variables_by_name = {}
 
     @property
@@ -12,6 +15,21 @@ class Contract:
             for var in self.variables:
                 self._variables_by_name[var.name] = var
         return self._variables_by_name
+
+class SrcMap:
+    def __init__(self, start, length, file_idx, jump):
+        self.start = start
+        self.length = length
+        self.file_idx = file_idx
+        self.jump = jump
+
+    def __eq__(self, other):
+        return self.__dict__ == other.__dict__
+
+class Breakpoint:
+    def __init__(self, file_idx, line):
+        self.file_idx = file_idx
+        self.line = line
 
 class Function:
     def __init__(self, name, src, params, local_vars):
@@ -97,6 +115,14 @@ class Array:
     def size(self):
         return 256
 
+class ContractType:
+    def __init__(self):
+        pass
+
+    @property
+    def size(self):
+        return 160
+
 class Map:
     def __init__(self, key_type, value_type):
         self.key_type = key_type
@@ -105,3 +131,4 @@ class Map:
     @property
     def size(self):
         return 256
+

@@ -1,7 +1,16 @@
 pragma solidity ^0.4.13;
 
+contract Counter {
+  uint cnt;
+
+  function increment() external {
+    cnt = cnt + 1;
+  }
+}
+
 contract Foo {
   MyStruct strct1;
+  Counter counter;
 
   struct MyStruct {
     uint8 a;
@@ -94,6 +103,8 @@ contract Foo {
     zz1["foo"].e.a = 15;
     zz2["foo"].push(strct);
     zz2["foo"].push(strct1);
+
+    counter = Counter(0x1609Acc94b54c986856398D25b62dC8Bc7e04859);
   }
 
   function doSomething() public {
@@ -130,6 +141,8 @@ contract Foo {
     } else {
       cnt -= 1;
     }
+
+    counter.increment();
 
     return 0;
   }

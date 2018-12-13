@@ -15,10 +15,12 @@ class ContractDataLoader:
 
         self.load_struct_asts()
 
-        src = list(map(lambda x: int(x), self.data['src'].split(":")))
-        name = self.data['attributes']['name']
+        src_arr = list(map(lambda x: int(x), self.data['ast']['src'].split(":")))
+        src = SrcMap(src_arr[0], src_arr[1], src_arr[2], '')
 
-        for x in self.data['children']:
+        name = self.data['ast']['attributes']['name']
+
+        for x in self.data['ast']['children']:
             if x['name'] == 'FunctionDefinition':
                 func = self.parse_function(x)
                 functions.append(func)
@@ -26,12 +28,21 @@ class ContractDataLoader:
                 var = self.parse_variable(x)
                 variables.append(var)
 
-        contract = Contract(name, src, functions, variables)
+        contract = Contract(
+                name,
+                src,
+                functions,
+                variables,
+                self.prepare_ops_mapping(),
+                self.prepare_sourcemap(),
+                self.data['bin-runtime']
+            )
+
         self.set_locations(contract)
         return contract
 
     def load_struct_asts(self):
-        for x in self.data['children']:
+        for x in self.data['ast']['children']:
             if x['name'] == 'StructDefinition':
                 self.struct_asts[x['attributes']['name']] = x
 
@@ -99,10 +110,13 @@ class ContractDataLoader:
 
         if type_ast['name'] == 'UserDefinedTypeName':
             struct_name = type_ast['attributes']['name']
-            if not struct_name in self.structs:
-                self.init_struct(struct_name)
+            if 'struct' in type_ast['attributes']['type']:
+                if not struct_name in self.structs:
+                    self.init_struct(struct_name)
 
-            return self.structs[struct_name]
+                return self.structs[struct_name]
+            elif 'contract' in type_ast['attributes']['type']:
+                return ContractType()
 
     def set_locations(self, obj):
         location = 0
@@ -148,7 +162,10 @@ class ContractDataLoader:
 
     def parse_function(self, ast):
         name = ast['attributes']['name']
-        src = list(map(lambda x: int(x), ast['src'].split(":")))
+
+        src_arr = list(map(lambda x: int(x), ast['src'].split(":")))
+        src = SrcMap(src_arr[0], src_arr[1], src_arr[2], '')
+
         params = []
         for x in ast['children']:
             if x['name'] == 'ParameterList' and not params:
@@ -187,3 +204,54 @@ class ContractDataLoader:
             for c in node['children']:
                 self.traverse_all(c, f)
 
+    def prepare_ops_mapping(self):
+        pc_to_op_idx = {}
+        code = bytes.fromhex(self.data['bin-runtime'])
+        i = 0
+        op_num = 0
+        while i < len(code):
+            if code[i] == 0xa1 and code[i+1] == 0x65:
+                break
+            b = code[i]
+            if b >= 0x60 and b < 0x80:
+                operands_size = b - 0x60 + 1
+            else:
+                operands_size = 0
+            pc_to_op_idx[i] = op_num
+            for j in range(operands_size):
+                pc_to_op_idx[i + j + 1] = op_num
+            i += (1 + operands_size)
+            op_num += 1
+        return pc_to_op_idx
+
+    def prepare_sourcemap(self):
+        srcmap = {}
+
+        map_items = self.data['srcmap-runtime'].split(";")
+
+        for i in range(len(map_items)):
+            map_item = map_items[i]
+            arr = map_item.split(":")
+
+            if len(arr) > 0 and arr[0] != '':
+                start = int(arr[0])
+            else:
+                start = srcmap[i-1].start
+
+            if len(arr) > 1 and arr[1] != '':
+                length = int(arr[1])
+            else:
+                lenght = srcmap[i-1].length
+
+            if len(arr) > 2 and arr[2] != '':
+                file_idx = int(arr[2])
+            else:
+                file_idx = srcmap[i-1].file_idx
+
+            if len(arr) > 3 and arr[3] != '':
+                jump = arr[3]
+            else:
+                jump = srcmap[i-1].jump
+
+            srcmap[i] = SrcMap(start, length, file_idx, jump)
+        return srcmap

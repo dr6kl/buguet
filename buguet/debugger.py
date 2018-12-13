@@ -11,33 +11,35 @@ from buguet.models import *
 from buguet.contract_data_loader import *
 
 class Debugger:
-    def __init__(self, web3, contract_data, transaction_id, source):
+    def __init__(self, web3, contracts_data, transaction_id, sources):
         self.web3 = web3;
-        self.contract_data = contract_data
+        self.contracts_data = contracts_data
         self.transaction_id = transaction_id
         self.position = 0
-        self.source = source
-        self.lines = source.split("\n")
+        self.lines_by_file_idx = []
+        for source in sources:
+            self.lines_by_file_idx.append(source.split("\n"))
         self.bp_stack = []
-        self.transaction = None
         self.load_transaction_trace()
-        self.validate_code()
-        self.prepare_ops_mapping()
-        self.prepare_sourcemap()
+        self.init_contracts()
         self.prepare_line_offsets()
-        self.init_ast()
         self.load_transaction()
-        self.contract_address = self.transaction.to
+        self.set_initial_contract()
         self.block_number = self.transaction.blockNumber
         self.breakpoints = []
 
-    def init_ast(self):
+    def init_contracts(self):
         self.contracts = []
-        root = self.contract_data['AST']
-        for c in root['children']:
-            if c['name'] == 'ContractDefinition':
-                contract = ContractDataLoader(c).load()
-                self.contracts.append(contract)
+        for source in self.contracts_data['sources']:
+            ast = self.contracts_data['sources'][source]['AST']
+            for c in ast['children']:
+                if c['name'] == 'ContractDefinition':
+                    name = c['attributes']['name']
+                    key = source + ':' + name
+                    data = self.contracts_data['contracts'][key]
+                    data['ast'] = c
+                    contract = ContractDataLoader(data).load()
+                    self.contracts.append(contract)
 
     def load_transaction(self):
         self.transaction = self.web3.eth.getTransaction(self.transaction_id)
@@ -48,98 +50,107 @@ class Debugger:
         print("Done")
         self.struct_logs = res.structLogs
 
-    def validate_code(self):
-        tx = self.web3.eth.getTransaction(self.transaction_id)
-        code = self.web3.eth.getCode(tx.to)
-        code = binascii.hexlify(code).decode('utf-8')
-        if not code == self.contract_data['bin-runtime']:
-            raise Exception("Contract code doesn't match")
+    def set_initial_contract(self):
+        self.current_contract_address = self.transaction.to
+        code = self.web3.eth.getCode(self.current_contract_address).hex()
+        code = code.replace("0x", "")
+        self.current_contract = self.find_contract_by_code(code)
 
-    def prepare_ops_mapping(self):
-        self.pc_to_op_idx = {}
-        code = bytes.fromhex(self.contract_data['bin-runtime'])
-        i = 0
-        op_num = 0
-        while i < len(code):
-            if code[i] == 0xa1 and code[i+1] == 0x65:
-                break
-            b = code[i]
-            if b >= 0x60 and b < 0x80:
-                operands_size = b - 0x60 + 1
-            else:
-                operands_size = 0
-            self.pc_to_op_idx[i] = op_num
-            for j in range(operands_size):
-                self.pc_to_op_idx[i + j + 1] = op_num
-            i += (1 + operands_size)
-            op_num += 1
+    def find_contract_by_code(self, code):
+        for contract in self.contracts:
+            if contract.bin_runtime == code:
+                return contract
+        raise Exception("No matching contract found in provided solidity data")
 
-    def line_by_offset(self, offset):
+    def prepare_line_offsets(self):
+        self.offsets_by_file_idx = {}
+        for i, lines in enumerate(self.lines_by_file_idx):
+            offset_by_line = {}
+            pos = 0
+            for j in range(len(lines)):
+                offset_by_line[j] = pos
+                pos += len(lines[j]) + 1
+            self.offsets_by_file_idx[i] = offset_by_line
+
+    def current_op(self):
+        return self.struct_logs[self.position]
+
+    def is_ended(self):
+        return self.position >= len(self.struct_logs)
+
+    def current_instuction_num(self):
+        return self.current_contract.pc_to_op_idx[self.current_op()['pc']]
+
+    def current_src_fragment(self):
+        return self.current_contract.srcmap[self.current_instuction_num()]
+
+    def current_source(self):
+        return self.lines_by_file_idx[self.current_src_fragment().file_idx]
+
+    def current_line_number(self):
+        frag = self.current_src_fragment()
+        offset_by_line = self.offsets_by_file_idx[frag.file_idx]
+        offset = frag.start
         start = 0
-        end = len(self.offset_by_line)
+        end = len(offset_by_line)
         while True:
             idx = (start + end) // 2
-            s = self.offset_by_line[idx]
-            if offset >= s and offset < s + len(self.lines[idx]) + 1:
+            s = offset_by_line[idx]
+            if offset >= s and offset < s + len(self.current_source()[idx]) + 1:
                 return idx
             elif offset < s:
                 end = idx - 1
-            elif offset >= s + len(self.lines[idx]) + 1:
+            elif offset >= s + len(self.current_source()[idx]) + 1:
                 start = idx + 1
 
-    def prepare_sourcemap(self):
-        self.srcmap = {}
-
-        map_items = self.contract_data['srcmap-runtime'].split(";")
-
-        for i in range(len(map_items)):
-            item = {}
-            map_item = map_items[i]
-            arr = map_item.split(":")
-
-            if len(arr) > 0 and arr[0] != '':
-                s = int(arr[0])
-            else:
-                s = self.srcmap[i-1]['s']
-
-            if len(arr) > 1 and arr[1] != '':
-                l = int(arr[1])
-            else:
-                l = self.srcmap[i-1]['l']
-
-            if len(arr) > 2 and arr[2] != '':
-                f = int(arr[2])
-            else:
-                f = self.srcmap[i-1]['f']
-
-            if len(arr) > 3 and arr[3] != '':
-                j = arr[3]
-            else:
-                j = self.srcmap[i-1]['j']
-
-            self.srcmap[i] = {"s": s, "l": l, 'f': f, 'j': j}
-
-    def prepare_line_offsets(self):
-        self.offset_by_line = {}
-        pos = 0
-        for i in range(len(self.lines)):
-            self.offset_by_line[i] = pos
-            pos += len(self.lines[i]) + 1
-
-    def current_instuction_num(self):
-        return self.pc_to_op_idx[self.current_op()['pc']]
-
-    def current_contract(self):
-        s = self.current_src_fragment()['s']
-        for c in self.contracts:
-            if s >= c.src[0] and s < c.src[0] + c.src[1]:
-                return c
-
     def current_func(self, contract):
-        s = self.current_src_fragment()['s']
+        start = self.current_src_fragment().start
         for f in contract.functions:
-            if s >= f.src[0] and s < f.src[0] + f.src[1]:
+            if start >= f.src.start and start < f.src.start + f.src.length:
                 return f
+
+    def get_storage_at_address(self, address):
+        op = self.current_op()
+        if op.storage and address.hex() in op.storage:
+            return bytes.fromhex(op.storage[address.hex()])
+        else:
+            return self.web3.eth.getStorageAt(
+                    Web3.toChecksumAddress(self.current_contract_address),
+                    address, self.block_number - 1)
+
+    def advance(self):
+        self.position += 1
+        if self.is_ended():
+            return
+        if self.current_src_fragment().jump == 'i':
+            self.bp_stack.append(len(self.current_op().stack) - 1)
+        if self.current_src_fragment().jump == 'o' and len(self.bp_stack) > 0:
+            self.bp_stack.pop()
+
+    def show_lines(self, n = 3, highlight=True):
+        src_frag = self.current_src_fragment()
+        line_num = self.current_line_number()
+
+        res = []
+        for i in range(line_num - n, line_num + n + 1):
+            if i >= 0  and i < len(self.current_source()):
+                line = self.current_source()[i]
+                offset = self.offsets_by_file_idx[src_frag.file_idx][i]
+
+                if highlight:
+                    start = src_frag.start - offset
+                    end = src_frag.start - offset + src_frag.length
+                    if start >= 0 and end <= len(line):
+                        line = line[0:start] + colored(line[start:end], 'red') + line[end:len(line)]
+                    elif start >= 0 and start < len(line):
+                        line = line[0:start] + colored(line[start:len(line)], 'red')
+                    elif end > 0 and end <= len(line):
+                        line = colored(line[0:end], 'red') + line[end:len(line)]
+                    elif start < 0 and end > len(line):
+                        line = colored(line, 'red')
+
+                res.append([i + 1, line])
+        return res
 
     def step(self):
         x = self.current_src_fragment()
@@ -156,7 +167,7 @@ class Debugger:
             if self.is_ended():
                 return
             if len(self.bp_stack) == start_stack_height:
-                if self.current_src_fragment()['j'] == 'o':
+                if self.current_src_fragment().jump == 'o':
                     self.step()
                 break
 
@@ -167,7 +178,7 @@ class Debugger:
             if self.is_ended():
                 return
             if len(self.bp_stack) == start_stack_height - 1:
-                if self.current_src_fragment()['j'] == 'o':
+                if self.current_src_fragment().jump == 'o':
                     self.step()
                 break
 
@@ -176,22 +187,9 @@ class Debugger:
             self.advance()
             if self.is_ended():
                 return
-            for breakpoint_linenumber in self.breakpoints:
-                if breakpoint_linenumber == self.current_line_num() + 1:
+            for bp in self.breakpoints:
+                if bp.file_idx == self.current_src_fragment().file_idx and bp.line == self.current_line_number() + 1:
                     return
-
-    def is_ended(self):
-        return self.position >= len(self.struct_logs)
-
-
-    def advance(self):
-        self.position += 1
-        if self.is_ended():
-            return
-        if self.current_src_fragment()['j'] == 'i':
-            self.bp_stack.append(len(self.current_op().stack) - 1)
-        if self.current_src_fragment()['j'] == 'o' and len(self.bp_stack) > 0:
-            self.bp_stack.pop()
 
     def print_stack(self):
         stack = self.struct_logs[self.position]['stack']
@@ -211,17 +209,6 @@ class Debugger:
             next_stack = self.struct_logs[self.position + 1]['stack']
             print(next_stack[len(next_stack) - 1], end='')
         print()
-
-    def current_src_fragment(self):
-        return self.srcmap[self.current_instuction_num()]
-
-    def current_op(self):
-        return self.struct_logs[self.position]
-
-    def current_line_num(self):
-        offset = self.current_src_fragment()['s']
-        line_num = self.line_by_offset(offset)
-        return line_num
 
     def parse_expression(self, str):
         m = regex.match(r"^(.+?)((\[(.+?)\])|(\.(.+?)))*$", str)
@@ -243,8 +230,7 @@ class Debugger:
 
         var_name = expr[0]
         keys = expr[1:]
-        contract = self.current_contract()
-        function = self.current_func(contract)
+        function = self.current_func(self.current_contract)
 
         bp = self.bp_stack[-1]
 
@@ -258,8 +244,8 @@ class Debugger:
             location = bp + var.location + 1
             new_var = Variable(var.var_type, location = location, location_type = var.location_type)
             return self.eval_stack(new_var, keys)
-        elif var_name in contract.variables_by_name:
-            var = contract.variables_by_name[var_name]
+        elif var_name in self.current_contract.variables_by_name:
+            var = self.current_contract.variables_by_name[var_name]
             return self.eval_storage(var, keys)
         else:
             return "Can not evaluate expression"
@@ -479,37 +465,16 @@ class Debugger:
 
         return '0x' + data.hex()
 
-    def get_storage_at_address(self, address):
-        op = self.current_op()
-        if op.storage and address.hex() in op.storage:
-            return bytes.fromhex(op.storage[address.hex()])
-        else:
-            return self.web3.eth.getStorageAt(Web3.toChecksumAddress(self.contract_address), address, self.block_number - 1)
-
-    def show_lines(self, n = 3, highlight=True):
-        line_num = self.current_line_num()
-        f = self.current_src_fragment()
-
-        res = []
-        for i in range(line_num - n, line_num + n + 1):
-            if i >= 0  and i < len(self.lines):
-                line = self.lines[i]
-                offset = self.offset_by_line[i]
-
-                if highlight:
-                    start = f['s'] - offset
-                    end = f['s'] - offset + f['l']
-                    if start >= 0 and end <= len(line):
-                        line = line[0:start] + colored(line[start:end], 'red') + line[end:len(line)]
-                    elif start >= 0 and start < len(line):
-                        line = line[0:start] + colored(line[start:len(line)], 'red')
-                    elif end > 0 and end <= len(line):
-                        line = colored(line[0:end], 'red') + line[end:len(line)]
-                    elif start < 0 and end > len(line):
-                        line = colored(line, 'red')
-
-                res.append([i + 1, line])
-        return res
+    def parse_breakpoint(self, bp):
+        arr = bp.split(":")
+        if len(arr) != 2:
+            return
+        try:
+            filename, line = arr[0], int(arr[1])
+            file_idx = self.contracts_data['sourceList'].index(filename)
+            return Breakpoint(file_idx, line)
+        except ValueError:
+            return
 
     def repl(self):
         while not self.is_ended():
@@ -527,9 +492,13 @@ class Debugger:
                 self.print_stack()
             elif line == "memory" or line == "mem":
                 self.print_memory()
-            elif str.startswith(line, "break"):
-                linenumber = int(line.split(" ")[1])
-                self.breakpoints.append(linenumber)
+            elif str.startswith(line, "break "):
+                bp = self.parse_breakpoint(line.split(" ")[1])
+                if bp:
+                    self.breakpoints.append(bp)
+                    print("Breakpoint is set")
+                else:
+                    print("Breakpoint is invalid")
             else:
                 print(self.eval(line))
 
@@ -542,8 +511,4 @@ class Debugger:
                 print("    ", end='')
             print(":" + str(line[0]) + ' ', end='')
             print(line[1])
-
-    def to_next_jump_dest(self):
-        while(self.current_op()['op'] != 'JUMPDEST'):
-            self.advance()
 
