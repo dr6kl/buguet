@@ -1,10 +1,16 @@
 pragma solidity ^0.4.13;
 
 contract Counter {
-  uint cnt;
+  uint cnt = 12;
 
   function increment() external {
-    cnt = cnt + 1;
+    uint x = aaa(1, 2);
+    cnt = cnt + x;
+  }
+
+  function aaa(uint a, uint b) internal returns(uint) {
+    uint d = a + b;
+    return d;
   }
 }
 
@@ -104,7 +110,7 @@ contract Foo {
     zz2["foo"].push(strct);
     zz2["foo"].push(strct1);
 
-    counter = Counter(0x1609Acc94b54c986856398D25b62dC8Bc7e04859);
+    counter = Counter(0x7413c639Be8E865D8022D11790A1fE48D5A88521);
   }
 
   function doSomething() public {

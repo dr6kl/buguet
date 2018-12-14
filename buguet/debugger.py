@@ -20,11 +20,12 @@ class Debugger:
         for source in sources:
             self.lines_by_file_idx.append(source.split("\n"))
         self.bp_stack = []
+        self.contracts_stack = []
         self.load_transaction_trace()
         self.init_contracts()
         self.prepare_line_offsets()
         self.load_transaction()
-        self.set_initial_contract()
+        self.load_contract_by_address(self.transaction.to)
         self.block_number = self.transaction.blockNumber
         self.breakpoints = []
 
@@ -50,17 +51,27 @@ class Debugger:
         print("Done")
         self.struct_logs = res.structLogs
 
-    def set_initial_contract(self):
-        self.current_contract_address = self.transaction.to
-        code = self.web3.eth.getCode(self.current_contract_address).hex()
+    def load_contract_by_address(self, address):
+        code = self.web3.eth.getCode(Web3.toChecksumAddress(address)).hex()
         code = code.replace("0x", "")
-        self.current_contract = self.find_contract_by_code(code)
+        self.contracts_stack.append([address, self.find_contract_by_code(code)])
 
     def find_contract_by_code(self, code):
+        code = self.cut_bin_metadata(code)
         for contract in self.contracts:
-            if contract.bin_runtime == code:
+            if self.cut_bin_metadata(contract.bin_runtime) == code:
                 return contract
         raise Exception("No matching contract found in provided solidity data")
+
+    def current_contract(self):
+        return self.contracts_stack[-1][1]
+
+    def current_contract_address(self):
+        return self.contracts_stack[-1][0]
+
+    def cut_bin_metadata(self, code):
+        metadata_start = code.index("a165627a7a72305820")
+        return code[:metadata_start]
 
     def prepare_line_offsets(self):
         self.offsets_by_file_idx = {}
@@ -79,10 +90,10 @@ class Debugger:
         return self.position >= len(self.struct_logs)
 
     def current_instuction_num(self):
-        return self.current_contract.pc_to_op_idx[self.current_op()['pc']]
+        return self.current_contract().pc_to_op_idx[self.current_op()['pc']]
 
     def current_src_fragment(self):
-        return self.current_contract.srcmap[self.current_instuction_num()]
+        return self.current_contract().srcmap[self.current_instuction_num()]
 
     def current_source(self):
         return self.lines_by_file_idx[self.current_src_fragment().file_idx]
@@ -115,17 +126,28 @@ class Debugger:
             return bytes.fromhex(op.storage[address.hex()])
         else:
             return self.web3.eth.getStorageAt(
-                    Web3.toChecksumAddress(self.current_contract_address),
+                    Web3.toChecksumAddress(self.current_contract_address()),
                     address, self.block_number - 1)
 
     def advance(self):
+        self.check_function_switch()
+        self.check_contract_switch()
         self.position += 1
-        if self.is_ended():
-            return
+
+    def check_function_switch(self):
         if self.current_src_fragment().jump == 'i':
             self.bp_stack.append(len(self.current_op().stack) - 1)
         if self.current_src_fragment().jump == 'o' and len(self.bp_stack) > 0:
             self.bp_stack.pop()
+
+    def check_contract_switch(self):
+        op = self.current_op()
+        if op.op == 'CALL':
+            address = op.stack[-2][24:]
+            self.load_contract_by_address(address)
+            self.bp_stack.append(1)
+        elif op.op == 'STOP':
+            self.contracts_stack.pop()
 
     def show_lines(self, n = 3, highlight=True):
         src_frag = self.current_src_fragment()
@@ -178,13 +200,11 @@ class Debugger:
             if self.is_ended():
                 return
             if len(self.bp_stack) == start_stack_height - 1:
-                if self.current_src_fragment().jump == 'o':
-                    self.step()
                 break
 
     def continu(self):
         while True:
-            self.advance()
+            self.step()
             if self.is_ended():
                 return
             for bp in self.breakpoints:
@@ -230,7 +250,7 @@ class Debugger:
 
         var_name = expr[0]
         keys = expr[1:]
-        function = self.current_func(self.current_contract)
+        function = self.current_func(self.current_contract())
 
         bp = self.bp_stack[-1]
 
@@ -244,8 +264,8 @@ class Debugger:
             location = bp + var.location + 1
             new_var = Variable(var.var_type, location = location, location_type = var.location_type)
             return self.eval_stack(new_var, keys)
-        elif var_name in self.current_contract.variables_by_name:
-            var = self.current_contract.variables_by_name[var_name]
+        elif var_name in self.current_contract().variables_by_name:
+            var = self.current_contract().variables_by_name[var_name]
             return self.eval_storage(var, keys)
         else:
             return "Can not evaluate expression"
@@ -499,6 +519,9 @@ class Debugger:
                     print("Breakpoint is set")
                 else:
                     print("Breakpoint is invalid")
+            elif line == "one_op":
+                self.print_op()
+                self.advance()
             else:
                 print(self.eval(line))
 
