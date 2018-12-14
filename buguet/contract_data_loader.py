@@ -4,10 +4,11 @@ import beeprint
 import pdb
 
 class ContractDataLoader:
-    def __init__(self, data):
+    def __init__(self, data, asts):
         self.struct_asts = {}
         self.structs = {}
         self.data = data
+        self.asts = asts
 
     def load(self):
         variables = []
@@ -15,18 +16,19 @@ class ContractDataLoader:
 
         self.load_struct_asts()
 
-        src_arr = list(map(lambda x: int(x), self.data['ast']['src'].split(":")))
+        src_arr = list(map(lambda x: int(x), self.asts[0]['src'].split(":")))
         src = SrcMap(src_arr[0], src_arr[1], src_arr[2], '')
 
-        name = self.data['ast']['attributes']['name']
+        name = self.asts[0]['attributes']['name']
 
-        for x in self.data['ast']['children']:
-            if x['name'] == 'FunctionDefinition':
-                func = self.parse_function(x)
-                functions.append(func)
-            if x['name'] == 'VariableDeclaration':
-                var = self.parse_variable(x)
-                variables.append(var)
+        for ast in self.asts:
+            for x in ast['children']:
+                if x['name'] == 'FunctionDefinition':
+                    func = self.parse_function(x)
+                    functions.append(func)
+                if x['name'] == 'VariableDeclaration':
+                    var = self.parse_variable(x)
+                    variables.append(var)
 
         contract = Contract(
                 name,
@@ -42,9 +44,10 @@ class ContractDataLoader:
         return contract
 
     def load_struct_asts(self):
-        for x in self.data['ast']['children']:
-            if x['name'] == 'StructDefinition':
-                self.struct_asts[x['attributes']['name']] = x
+        for ast in self.asts:
+            for x in ast['children']:
+                if x['name'] == 'StructDefinition':
+                    self.struct_asts[x['attributes']['name']] = x
 
     def init_struct(self, struct_name):
         ast = self.struct_asts[struct_name]

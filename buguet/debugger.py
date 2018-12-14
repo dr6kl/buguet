@@ -9,16 +9,20 @@ from collections import namedtuple
 import beeprint
 from buguet.models import *
 from buguet.contract_data_loader import *
+from os import path
 
 class Debugger:
-    def __init__(self, web3, contracts_data, transaction_id, sources):
+    def __init__(self, web3, contracts_data, transaction_id, sources_root):
         self.web3 = web3;
         self.contracts_data = contracts_data
         self.transaction_id = transaction_id
         self.position = 0
         self.lines_by_file_idx = []
-        for source in sources:
+
+        for source_file in contracts_data['sources']:
+            source = open(path.join(sources_root, source_file)).read()
             self.lines_by_file_idx.append(source.split("\n"))
+
         self.bp_stack = []
         self.contracts_stack = []
         self.load_transaction_trace()
@@ -31,16 +35,24 @@ class Debugger:
 
     def init_contracts(self):
         self.contracts = []
+
+        contract_ast_by_id = {}
+        contract_ast_by_name = {}
+
         for source in self.contracts_data['sources']:
-            ast = self.contracts_data['sources'][source]['AST']
-            for c in ast['children']:
-                if c['name'] == 'ContractDefinition':
-                    name = c['attributes']['name']
-                    key = source + ':' + name
-                    data = self.contracts_data['contracts'][key]
-                    data['ast'] = c
-                    contract = ContractDataLoader(data).load()
-                    self.contracts.append(contract)
+            for contract_ast in self.contracts_data['sources'][source]['AST']['children']:
+                if contract_ast['name'] == 'ContractDefinition':
+                    contract_ast_by_id[contract_ast['id']] = contract_ast
+                    contract_ast_by_name[contract_ast['attributes']['name']] = contract_ast
+
+        for key in self.contracts_data['contracts']:
+            name = key.split(":")[1]
+            asts = []
+            for contract_id in contract_ast_by_name[name]['attributes']['linearizedBaseContracts']:
+                asts.append(contract_ast_by_id[contract_id])
+            data = self.contracts_data['contracts'][key]
+            contract = ContractDataLoader(data, list(reversed(asts))).load()
+            self.contracts.append(contract)
 
     def load_transaction(self):
         self.transaction = self.web3.eth.getTransaction(self.transaction_id)
