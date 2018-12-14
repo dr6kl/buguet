@@ -402,19 +402,43 @@ class Debugger:
     def eval_storage_map(self, var, keys):
         if not keys:
             return "Mapping"
-        key_match = regex.match(r"\"(.*)\"", keys[0])
-        if key_match:
-            k = key_match.group(1)
-            s = sha3.keccak_256()
-            s.update(bytes(k, 'utf-8'))
-            s.update(var.location.to_bytes(32, 'big'))
-            value_address = s.digest()
-            value_type = var.var_type.value_type
-            location = int.from_bytes(value_address, 'big')
-            new_var = Variable(value_type, location = location, offset = 0)
-            return self.eval_storage(new_var, keys[1:])
-        else:
-            return None
+
+        key = keys[0]
+        key_bytes = None
+
+        key_type = var.var_type.key_type
+
+        if type(key_type) == String:
+            key_match = regex.match(r"\"(.*)\"", key)
+            if key_match:
+                k = key_match.group(1)
+                key_bytes = bytes(k, 'utf-8')
+        elif type(key_type) in [Int, Uint]:
+            try:
+                key_bytes = int(key).to_bytes(32, "big")
+            except ValueError:
+                return
+        elif type(key_type) == Address:
+            key_bytes = bytes(12) + bytes.fromhex(key.replace("0x", ""))
+        elif type(key_type) == Bytes:
+            key_bytes = bytes.fromhex(key.replace("0x", ""))
+        elif type(key_type) == Bool:
+            if key == "true":
+                key_bytes = (1).to_bytes(32, "big")
+            else:
+                key_bytes = (0).to_bytes(32, "big")
+
+        if not key_bytes:
+            return
+
+        s = sha3.keccak_256()
+        s.update(key_bytes)
+        s.update(var.location.to_bytes(32, 'big'))
+        value_address = s.digest()
+        value_type = var.var_type.value_type
+        location = int.from_bytes(value_address, 'big')
+        new_var = Variable(value_type, location = location, offset = 0)
+        return self.eval_storage(new_var, keys[1:])
 
     def eval_storage_struct(self, var, keys):
         if keys:

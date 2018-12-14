@@ -33,6 +33,15 @@ contract Foo is Bar {
     uint b;
   }
 
+  struct MapTest {
+    mapping(uint8 => uint) x1;
+    mapping(int => uint) x2;
+    mapping(bytes24 => uint) x3;
+    mapping(address => uint) x4;
+    mapping(bytes => uint) x5;
+    mapping(bool => uint) x6;
+  }
+
   uint8 aaa1;
   uint8 aaa2;
   bool flag;
@@ -52,6 +61,7 @@ contract Foo is Bar {
   int8 qqq2;
   bytes bts;
   bytes bts2;
+  MapTest ccc;
   mapping (string => MyStruct) zz1;
   mapping (string => MyStruct[]) zz2;
   mapping (string => uint256) myMap;
@@ -59,6 +69,7 @@ contract Foo is Bar {
   uint8[] myArray;
   mapping(string => uint256[]) aaa;
   mapping(string => uint256)[] bbb;
+
 
   function Foo() public {
     myMap2["foo"]["bar"] = 13;
@@ -113,6 +124,14 @@ contract Foo is Bar {
     zz2["foo"].push(strct1);
 
     counter = Counter(0x7413c639Be8E865D8022D11790A1fE48D5A88521);
+
+    ccc.x1[12] = 15;
+    ccc.x2[12] = 15;
+    ccc.x3[qqq1] = 15;
+    ccc.x4[myAddr] = 15;
+    ccc.x5[bts] = 15;
+    ccc.x6[true] = 15;
+    ccc.x6[false] = 11;
   }
 
   function doSomething() public {
