@@ -1,5 +1,7 @@
 pragma solidity ^0.4.13;
 
+import "Bar.sol";
+
 contract Counter {
   uint cnt = 12;
 
@@ -14,7 +16,7 @@ contract Counter {
   }
 }
 
-contract Foo {
+contract Foo is Bar {
   MyStruct strct1;
   Counter counter;
 
@@ -131,6 +133,8 @@ contract Foo {
       a += 1;
     }
     uint b = myArray[1000];
+
+    ggg(5, 6);
 
     uint c = aaa["foo"][3];
     uint d = bbb[7]["bar"];
