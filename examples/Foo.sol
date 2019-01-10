@@ -123,7 +123,7 @@ contract Foo is Bar {
     zz2["foo"].push(strct);
     zz2["foo"].push(strct1);
 
-    counter = Counter(0x7413c639Be8E865D8022D11790A1fE48D5A88521);
+    counter = Counter(0x4D085e831bf4B4C1D80E42eE587e361Fe793eC26);
 
     ccc.x1[12] = 15;
     ccc.x2[12] = 15;
@@ -134,7 +134,8 @@ contract Foo is Bar {
     ccc.x6[false] = 11;
   }
 
-  function doSomething() public {
+  function doSomething(uint a, uint8 b, uint8 d) public {
+    a = b + d;
     myfunc();
   }
 

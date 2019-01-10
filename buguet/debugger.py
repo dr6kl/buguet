@@ -24,6 +24,7 @@ class Debugger:
             self.lines_by_file_idx.append(source.split("\n"))
 
         self.bp_stack = []
+        self.bp_stack.append(-1)
         self.contracts_stack = []
         self.load_transaction_trace()
         self.init_contracts()
@@ -157,7 +158,7 @@ class Debugger:
         if op.op == 'CALL':
             address = op.stack[-2][24:]
             self.load_contract_by_address(address)
-            self.bp_stack.append(1)
+            self.bp_stack.append(-1)
         elif op.op == 'STOP':
             self.contracts_stack.pop()
 
@@ -235,7 +236,7 @@ class Debugger:
         print("\n\n")
 
     def print_op(self):
-        op = self.struct_logs[self.position]['op']
+        op = self.struct_logs[self.position].op
         print(op, end=' ')
         if str.startswith(op, 'PUSH') and self.position < len(self.struct_logs):
             next_stack = self.struct_logs[self.position + 1]['stack']
@@ -265,6 +266,8 @@ class Debugger:
         function = self.current_func(self.current_contract())
 
         bp = self.bp_stack[-1]
+        if bp == -1:
+            bp = len(function.params) + 2
 
         if var_name in function.params_by_name:
             var = function.params_by_name[var_name]
