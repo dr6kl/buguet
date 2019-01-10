@@ -32,11 +32,12 @@ class Breakpoint:
         self.line = line
 
 class Function:
-    def __init__(self, name, src, params, local_vars):
+    def __init__(self, name, src, params, local_vars, return_count):
         self.name = name
         self.src = src
         self.params = params
         self.local_vars = local_vars
+        self.return_count = return_count
         self._params_by_name = {}
         self._local_vars_by_name = {}
 

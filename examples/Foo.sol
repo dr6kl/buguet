@@ -123,7 +123,7 @@ contract Foo is Bar {
     zz2["foo"].push(strct);
     zz2["foo"].push(strct1);
 
-    counter = Counter(0x4D085e831bf4B4C1D80E42eE587e361Fe793eC26);
+    counter = Counter(0xAc74dCCdb1b6c7690Ece55db6db3BE5C8B730b34);
 
     ccc.x1[12] = 15;
     ccc.x2[12] = 15;
@@ -139,7 +139,7 @@ contract Foo is Bar {
     myfunc();
   }
 
-  function myfunc() internal returns (uint256) {
+  function myfunc() internal {
     cnt += arr[3];
 
     uint a = myMap2["foo"]["bar"];
@@ -155,6 +155,7 @@ contract Foo is Bar {
     uint b = myArray[1000];
 
     ggg(5, 6);
+    buzz(1, 2);
 
     uint c = aaa["foo"][3];
     uint d = bbb[7]["bar"];
@@ -173,8 +174,6 @@ contract Foo is Bar {
     }
 
     counter.increment();
-
-    return 0;
   }
 
   function foo2(uint a, MyStruct b, uint c1) internal returns (uint) {
@@ -221,6 +220,11 @@ contract Foo is Bar {
     uint d;
     d = a - b + c;
     return d;
+  }
+
+  function buzz(uint a, uint b) internal returns (uint, uint, uint, uint) {
+    uint d = a + b;
+    return (0, 1, 2, d);
   }
 
   function foo1(uint8 a, uint8 b, uint8 c) internal returns (uint) {

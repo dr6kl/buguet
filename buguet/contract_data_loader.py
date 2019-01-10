@@ -170,14 +170,23 @@ class ContractDataLoader:
         src = SrcMap(src_arr[0], src_arr[1], src_arr[2], '')
 
         params = []
+        return_count = 0
+
+        params_parsed = False
+
         for x in ast['children']:
-            if x['name'] == 'ParameterList' and not params:
-                if x['children']:
-                    for y in x['children']:
-                        if y['name'] == 'VariableDeclaration':
-                            var_name = y['attributes']['name']
-                            if var_name:
-                                params.append(self.parse_function_variable(y))
+            if x['name'] == 'ParameterList':
+                if not params_parsed:
+                    if x['children']:
+                        for y in x['children']:
+                            if y['name'] == 'VariableDeclaration':
+                                var_name = y['attributes']['name']
+                                if var_name:
+                                    params.append(self.parse_function_variable(y))
+                    params_parsed = True
+                else:
+                    if x['children']:
+                        return_count = len(x['children'])
             if x['name'] == 'Block':
                 local_vars = []
                 def process_function_node(node):
@@ -188,7 +197,7 @@ class ContractDataLoader:
             params[i].location = i
         for i, p in enumerate(local_vars):
            local_vars[i].location = i
-        return Function(name, src, params, local_vars)
+        return Function(name, src, params, local_vars, return_count)
 
     def parse_function_variable(self, ast):
         if 'memory' in ast['attributes']['type']:
