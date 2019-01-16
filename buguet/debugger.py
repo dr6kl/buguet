@@ -569,4 +569,3 @@ class Debugger:
                 print("    ", end='')
             print(":" + str(line[0]) + ' ', end='')
             print(line[1])
-

@@ -1,6 +1,5 @@
 from buguet.models import *
 import regex
-import beeprint
 
 class ContractDataLoader:
     def __init__(self, data, asts):

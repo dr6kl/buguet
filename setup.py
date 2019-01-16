@@ -14,7 +14,17 @@ setuptools.setup(
     url="https://github.com/dr6kl/buguet",
     packages=setuptools.find_packages(),
     license = "GPL",
-    install_requires=['web3 >=4.7.2, <5', 'pysha3 >=1.0.2, <2', 'termcolor >=1.1.0, <2'],
+    install_requires=[
+        'web3 >=4.7.2, <5',
+        'pysha3 >=1.0.2, <2',
+        'termcolor >=1.1.0, <2',
+        'regex ==2018.8.29'
+    ],
+    entry_points={
+        'console_scripts': [
+            'buguet = buguet.cli:main'
+        ]
+    },
     classifiers=[
         "Programming Language :: Python :: 3",
         "LICENSE :: OSI APPROVED :: GNU GENERAL PUBLIC LICENSE V3 (GPLV3)",
