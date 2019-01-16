@@ -1,12 +1,8 @@
-import pdb
-import binascii
 from web3 import Web3
 import readline
 from termcolor import colored
 import sha3
 import regex
-from collections import namedtuple
-import beeprint
 from buguet.models import *
 from buguet.contract_data_loader import *
 from os import path
