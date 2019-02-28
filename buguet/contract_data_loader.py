@@ -168,8 +168,9 @@ class ContractDataLoader:
         src = SrcMap(src_arr[0], src_arr[1], src_arr[2], '')
 
         params = []
-        return_count = 0
+        local_vars = []
 
+        return_count = 0
         params_parsed = False
 
         for x in ast['children']:
@@ -186,7 +187,6 @@ class ContractDataLoader:
                     if x['children']:
                         return_count = len(x['children'])
             if x['name'] == 'Block':
-                local_vars = []
                 def process_function_node(node):
                     if node['name'] == 'VariableDeclaration':
                         local_vars.append(self.parse_function_variable(node))

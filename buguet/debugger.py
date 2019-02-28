@@ -48,8 +48,9 @@ class Debugger:
             for contract_id in contract_ast_by_name[name]['attributes']['linearizedBaseContracts']:
                 asts.append(contract_ast_by_id[contract_id])
             data = self.contracts_data['contracts'][key]
-            contract = ContractDataLoader(data, list(reversed(asts))).load()
-            self.contracts.append(contract)
+            if data['bin']:
+                contract = ContractDataLoader(data, list(reversed(asts))).load()
+                self.contracts.append(contract)
 
     def load_transaction(self):
         self.transaction = self.web3.eth.getTransaction(self.transaction_id)
@@ -185,7 +186,7 @@ class Debugger:
 
     def step(self):
         x = self.current_src_fragment()
-        while x == self.current_src_fragment():
+        while x == self.current_src_fragment() or self.current_src_fragment().file_idx == -1:
             self.advance()
             if self.is_ended():
                 return
