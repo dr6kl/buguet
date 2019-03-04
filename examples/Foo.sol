@@ -71,7 +71,7 @@ contract Foo is Bar {
   mapping(string => uint256)[] bbb;
 
 
-  function Foo() public {
+  function Foo(address counter_address) public {
     myMap2["foo"]["bar"] = 13;
     myMap2["bar"]["foo"] = 17;
     myArray.length = 1001;
@@ -123,7 +123,7 @@ contract Foo is Bar {
     zz2["foo"].push(strct);
     zz2["foo"].push(strct1);
 
-    counter = Counter(0xAc74dCCdb1b6c7690Ece55db6db3BE5C8B730b34);
+    counter = Counter(counter_address);
 
     ccc.x1[12] = 15;
     ccc.x2[12] = 15;

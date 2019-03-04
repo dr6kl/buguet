@@ -513,13 +513,15 @@ class Debugger:
             return (int).from_bytes(data, byteorder = 'big', signed = False)
         if type(var_type) is Bool:
             if (int).from_bytes(data, 'big') == 1:
-                return 'true'
+                return True
             else:
-                return 'false'
+                return False
         if type(var_type) is String:
             return str(data, 'utf8')
+        if type(var_type) is Address:
+            return data[-20:]
 
-        return '0x' + data.hex()
+        return data
 
     def parse_breakpoint(self, bp):
         arr = bp.split(":")
@@ -559,7 +561,11 @@ class Debugger:
                 self.print_op()
                 self.advance()
             else:
-                print(self.eval(line))
+                res = self.eval(line)
+                if type(res) is bytes:
+                    print('0x' + res.hex())
+                else:
+                    print(res)
 
     def print_lines(self, n = 3):
         lines = self.show_lines(n)
