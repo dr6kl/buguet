@@ -24,7 +24,7 @@ class ContractDataLoader:
                 if x['name'] == 'FunctionDefinition':
                     func = self.parse_function(x)
                     functions.append(func)
-                if x['name'] == 'VariableDeclaration':
+                if x['name'] == 'VariableDeclaration' and not x['attributes']['constant']:
                     var = self.parse_variable(x)
                     variables.append(var)
 
