@@ -35,20 +35,23 @@ class Debugger:
                 sources.append(open(src_path).read().split("\n"))
 
             for key in contract_data['sources']:
-                for contract_ast in contract_data['sources'][key]['AST']['children']:
-                    if contract_ast['name'] == 'ContractDefinition':
-                        contract_ast_by_id[contract_ast['id']] = contract_ast
-                        contract_ast_by_name[contract_ast['attributes']['name']] = contract_ast
+                base_ast = contract_data['sources'][key]['AST']
+                if 'children' in base_ast:
+                    for contract_ast in base_ast['children']:
+                        if contract_ast['name'] == 'ContractDefinition':
+                            contract_ast_by_id[contract_ast['id']] = contract_ast
+                            contract_ast_by_name[contract_ast['attributes']['name']] = contract_ast
 
-            for key in contract_data['contracts']:
-                name = key.split(":")[1]
-                asts = []
-                for contract_id in contract_ast_by_name[name]['attributes']['linearizedBaseContracts']:
-                    asts.append(contract_ast_by_id[contract_id])
-                data = contract_data['contracts'][key]
-                if data['bin']:
-                    contract = ContractDataLoader(data, list(reversed(asts)), source_list, sources).load()
-                    self.contracts.append(contract)
+            if 'contracts' in contract_data:
+                for key in contract_data['contracts']:
+                    name = key.split(":")[1]
+                    asts = []
+                    for contract_id in contract_ast_by_name[name]['attributes']['linearizedBaseContracts']:
+                        asts.append(contract_ast_by_id[contract_id])
+                    data = contract_data['contracts'][key]
+                    if data['bin']:
+                        contract = ContractDataLoader(data, list(reversed(asts)), source_list, sources).load()
+                        self.contracts.append(contract)
 
     def load_transaction(self):
         self.transaction = self.web3.eth.getTransaction(self.transaction_id)
