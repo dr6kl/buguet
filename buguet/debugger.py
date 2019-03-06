@@ -8,49 +8,47 @@ from buguet.contract_data_loader import *
 from os import path
 
 class Debugger:
-    def __init__(self, web3, contracts_data, transaction_id, sources_root):
+    def __init__(self, web3, contracts_data, transaction_id):
         self.web3 = web3;
-        self.contracts_data = contracts_data
         self.transaction_id = transaction_id
         self.position = 0
-        self.lines_by_file_idx = []
-
-        for source_file in contracts_data['sources']:
-            source = open(path.join(sources_root, source_file)).read()
-            self.lines_by_file_idx.append(source.split("\n"))
-
         self.bp_stack = []
         self.bp_stack.append(-1)
         self.contracts_stack = []
         self.load_transaction_trace()
-        self.init_contracts()
-        self.prepare_line_offsets()
+        self.init_contracts(contracts_data)
         self.load_transaction()
         self.load_contract_by_address(self.transaction.to)
         self.block_number = self.transaction.blockNumber
         self.breakpoints = []
 
-    def init_contracts(self):
+    def init_contracts(self, contracts_data):
         self.contracts = []
 
-        contract_ast_by_id = {}
-        contract_ast_by_name = {}
+        for contract_data in contracts_data:
+            contract_ast_by_id = {}
+            contract_ast_by_name = {}
 
-        for source in self.contracts_data['sources']:
-            for contract_ast in self.contracts_data['sources'][source]['AST']['children']:
-                if contract_ast['name'] == 'ContractDefinition':
-                    contract_ast_by_id[contract_ast['id']] = contract_ast
-                    contract_ast_by_name[contract_ast['attributes']['name']] = contract_ast
+            source_list = contract_data['sourceList']
+            sources = []
+            for src_path in source_list:
+                sources.append(open(src_path).read().split("\n"))
 
-        for key in self.contracts_data['contracts']:
-            name = key.split(":")[1]
-            asts = []
-            for contract_id in contract_ast_by_name[name]['attributes']['linearizedBaseContracts']:
-                asts.append(contract_ast_by_id[contract_id])
-            data = self.contracts_data['contracts'][key]
-            if data['bin']:
-                contract = ContractDataLoader(data, list(reversed(asts))).load()
-                self.contracts.append(contract)
+            for key in contract_data['sources']:
+                for contract_ast in contract_data['sources'][key]['AST']['children']:
+                    if contract_ast['name'] == 'ContractDefinition':
+                        contract_ast_by_id[contract_ast['id']] = contract_ast
+                        contract_ast_by_name[contract_ast['attributes']['name']] = contract_ast
+
+            for key in contract_data['contracts']:
+                name = key.split(":")[1]
+                asts = []
+                for contract_id in contract_ast_by_name[name]['attributes']['linearizedBaseContracts']:
+                    asts.append(contract_ast_by_id[contract_id])
+                data = contract_data['contracts'][key]
+                if data['bin']:
+                    contract = ContractDataLoader(data, list(reversed(asts)), source_list, sources).load()
+                    self.contracts.append(contract)
 
     def load_transaction(self):
         self.transaction = self.web3.eth.getTransaction(self.transaction_id)
@@ -83,16 +81,6 @@ class Debugger:
         metadata_start = code.index("a165627a7a72305820")
         return code[:metadata_start]
 
-    def prepare_line_offsets(self):
-        self.offsets_by_file_idx = {}
-        for i, lines in enumerate(self.lines_by_file_idx):
-            offset_by_line = {}
-            pos = 0
-            for j in range(len(lines)):
-                offset_by_line[j] = pos
-                pos += len(lines[j]) + 1
-            self.offsets_by_file_idx[i] = offset_by_line
-
     def current_op(self):
         return self.struct_logs[self.position]
 
@@ -106,11 +94,14 @@ class Debugger:
         return self.current_contract().srcmap[self.current_instuction_num()]
 
     def current_source(self):
-        return self.lines_by_file_idx[self.current_src_fragment().file_idx]
+        return self.current_contract().sources[self.current_src_fragment().file_idx]
+
+    def current_source_path(self):
+        return self.current_contract().source_list[self.current_src_fragment().file_idx]
 
     def current_line_number(self):
         frag = self.current_src_fragment()
-        offset_by_line = self.offsets_by_file_idx[frag.file_idx]
+        offset_by_line = self.current_contract().source_offsets[frag.file_idx]
         offset = frag.start
         start = 0
         end = len(offset_by_line)
@@ -167,9 +158,9 @@ class Debugger:
         for i in range(line_num - n, line_num + n + 1):
             if i >= 0  and i < len(self.current_source()):
                 line = self.current_source()[i]
-                offset = self.offsets_by_file_idx[src_frag.file_idx][i]
 
                 if highlight:
+                    offset = self.current_contract().source_offsets[src_frag.file_idx][i]
                     start = src_frag.start - offset
                     end = src_frag.start - offset + src_frag.length
                     if start >= 0 and end <= len(line):
@@ -218,7 +209,8 @@ class Debugger:
             if self.is_ended():
                 return
             for bp in self.breakpoints:
-                if bp.file_idx == self.current_src_fragment().file_idx and bp.line == self.current_line_number() + 1:
+                if (bp.src == self.current_source_path()
+                        and bp.line == self.current_line_number() + 1):
                     return
 
     def print_stack(self):
@@ -529,8 +521,7 @@ class Debugger:
             return
         try:
             filename, line = arr[0], int(arr[1])
-            file_idx = self.contracts_data['sourceList'].index(filename)
-            return Breakpoint(file_idx, line)
+            return Breakpoint(filename, line)
         except ValueError:
             return
 

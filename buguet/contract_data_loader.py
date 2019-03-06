@@ -2,11 +2,13 @@ from buguet.models import *
 import regex
 
 class ContractDataLoader:
-    def __init__(self, data, asts):
+    def __init__(self, data, asts, source_list, sources):
         self.struct_asts = {}
         self.structs = {}
         self.data = data
         self.asts = asts
+        self.source_list = source_list
+        self.sources = sources
 
     def load(self):
         variables = []
@@ -35,7 +37,10 @@ class ContractDataLoader:
                 variables,
                 self.prepare_ops_mapping(),
                 self.prepare_sourcemap(),
-                self.data['bin-runtime']
+                self.data['bin-runtime'],
+                self.source_list,
+                self.sources,
+                self.prepare_line_offsets()
             )
 
         self.set_locations(contract)
@@ -265,3 +270,15 @@ class ContractDataLoader:
 
             srcmap[i] = SrcMap(start, length, file_idx, jump)
         return srcmap
+
+    def prepare_line_offsets(self):
+        source_offsets = {}
+        for i, lines in enumerate(self.sources):
+            offset_by_line = {}
+            pos = 0
+            for j in range(len(lines)):
+                offset_by_line[j] = pos
+                pos += len(lines[j]) + 1
+            source_offsets[i] = offset_by_line
+        return source_offsets
+

@@ -1,5 +1,7 @@
 class Contract:
-    def __init__(self, name, src, functions, variables, pc_to_op_idx, srcmap, bin_runtime):
+    def __init__(self, name, src, functions, variables,
+            pc_to_op_idx, srcmap, bin_runtime,
+            source_list, sources, source_offsets):
         self.name = name
         self.src = src
         self.functions = functions
@@ -7,6 +9,9 @@ class Contract:
         self.pc_to_op_idx = pc_to_op_idx
         self.srcmap = srcmap
         self.bin_runtime = bin_runtime
+        self.source_list = source_list
+        self.sources = sources
+        self.source_offsets = source_offsets
         self._variables_by_name = {}
 
     @property
@@ -27,8 +32,8 @@ class SrcMap:
         return self.__dict__ == other.__dict__
 
 class Breakpoint:
-    def __init__(self, file_idx, line):
-        self.file_idx = file_idx
+    def __init__(self, src, line):
+        self.src = src
         self.line = line
 
 class Function:
