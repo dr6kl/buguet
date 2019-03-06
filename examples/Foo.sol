@@ -216,9 +216,11 @@ contract Foo is Bar {
   }
 
   function bar(uint a, uint b, uint c) internal returns (uint) {
+    MyStruct[10] memory hh;
     a = a * 2;
     uint d;
     d = a - b + c;
+    var jrku = hh;
     return d;
   }
 

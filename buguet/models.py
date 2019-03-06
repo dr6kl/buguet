@@ -121,14 +121,6 @@ class Array:
     def size(self):
         return 256
 
-class ContractType:
-    def __init__(self):
-        pass
-
-    @property
-    def size(self):
-        return 160
-
 class Map:
     def __init__(self, key_type, value_type):
         self.key_type = key_type

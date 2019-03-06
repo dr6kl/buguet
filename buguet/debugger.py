@@ -514,9 +514,9 @@ class Debugger:
         if type(var_type) is String:
             return str(data, 'utf8')
         if type(var_type) is Address:
-            return data[-20:]
+            return data[-20:].hex()
 
-        return data
+        return data.hex()
 
     def parse_breakpoint(self, bp):
         arr = bp.split(":")
@@ -555,11 +555,7 @@ class Debugger:
                 self.print_op()
                 self.advance()
             else:
-                res = self.eval(line)
-                if type(res) is bytes:
-                    print('0x' + res.hex())
-                else:
-                    print(res)
+                print(self.eval(line))
 
     def print_lines(self, n = 3):
         lines = self.show_lines(n)

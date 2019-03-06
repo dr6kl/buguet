@@ -63,66 +63,71 @@ class ContractDataLoader:
 
     def parse_variable(self, ast):
         return Variable(
-                self.parse_type(ast['children'][0]),
+                self.parse_type(ast['attributes']['type']),
                 ast['attributes']['name']
         )
 
-    def parse_type(self, type_ast):
-        type_str = type_ast['attributes']['type']
-
-        match = regex.match("^int(\d+)$", type_str)
+    def parse_type(self, type_str):
+        match = regex.match("int(\d+)$", type_str)
         if match:
             return Int(int(match.group(1)))
 
-        match = regex.match("^uint(\d+)$", type_str)
+        match = regex.match("uint(\d+)$", type_str)
         if match:
             return Uint(int(match.group(1)))
 
-        match = regex.match("^bool$", type_str)
+        match = regex.match("bool$", type_str)
         if match:
             return Bool()
 
-        match = regex.match("^bytes(\d+)$", type_str)
+        match = regex.match("bytes(\d+)$", type_str)
         if match:
             return FixedBytes(int(match.group(1)) * 8)
 
-        match = regex.match("bytes.*", type_str)
+        location_regex = "((storage \w+)|memory)"
+
+        match = regex.match(f"bytes {location_regex}$", type_str)
         if match:
             return Bytes()
 
-        match = regex.match("string.*", type_str)
+        match = regex.match(f"string {location_regex}$", type_str)
         if match:
             return String()
 
-        match = regex.match("address", type_str)
+        match = regex.match("address$", type_str)
         if match:
             return Address()
 
-        if type_ast['name'] == 'ArrayTypeName':
-            if len(type_ast['children']) == 2:
-                length = int(type_ast['children'][1]['attributes']['value'])
-                elemType = self.parse_type(type_ast['children'][0])
-                return FixedArray(elemType, length)
-            else:
-                element_type = self.parse_type(type_ast['children'][0])
-                result = Array(element_type)
-                return result
+        match = regex.match(f"struct \w+\.(\w+) {location_regex}$", type_str)
+        if match:
+            struct_name = match.group(1)
+            if not struct_name in self.structs:
+                self.init_struct(struct_name)
+            return self.structs[struct_name]
 
-        if type_ast['name'] == 'Mapping':
-            key_type = self.parse_type(type_ast['children'][0])
-            value_type = self.parse_type(type_ast['children'][1])
+        match = regex.match("contract \w+", type_str)
+        if match:
+            return Address()
+
+        match = regex.match(f"(.*)\[(\d+)\] {location_regex}$", type_str)
+        if match:
+            length = int(match.group(2))
+            elemType = self.parse_type(match.group(1))
+            return FixedArray(elemType, length)
+
+        match = regex.match("mapping\((.*?) => (.*)\)$", type_str)
+        if match:
+            key_type = self.parse_type(match.group(1))
+            value_type = self.parse_type(match.group(2))
             result = Map(key_type, value_type)
             return result
 
-        if type_ast['name'] == 'UserDefinedTypeName':
-            struct_name = type_ast['attributes']['name']
-            if 'struct' in type_ast['attributes']['type']:
-                if not struct_name in self.structs:
-                    self.init_struct(struct_name)
+        match = regex.match(f"(.*)\[\] {location_regex}$", type_str)
+        if match:
+            elemType = self.parse_type(match.group(1))
+            return Array(elemType)
 
-                return self.structs[struct_name]
-            elif 'contract' in type_ast['attributes']['type']:
-                return ContractType()
+        raise Exception(f"Can not parse type {type_str}")
 
     def set_locations(self, obj):
         location = 0
