@@ -35,9 +35,12 @@ class ContractDataLoader:
                 src,
                 functions,
                 variables,
-                self.prepare_ops_mapping(),
-                self.prepare_sourcemap(),
                 self.data['bin-runtime'],
+                self.prepare_ops_mapping(self.data['bin-runtime']),
+                self.prepare_sourcemap(self.data['srcmap-runtime']),
+                self.data['bin'],
+                self.prepare_ops_mapping(self.data['bin']),
+                self.prepare_sourcemap(self.data['srcmap']),
                 self.source_list,
                 self.sources,
                 self.prepare_line_offsets()
@@ -224,9 +227,9 @@ class ContractDataLoader:
             for c in node['children']:
                 self.traverse_all(c, f)
 
-    def prepare_ops_mapping(self):
+    def prepare_ops_mapping(self, code):
         pc_to_op_idx = {}
-        code = bytes.fromhex(self.data['bin-runtime'])
+        code = bytes.fromhex(code)
         i = 0
         op_num = 0
         while i < len(code):
@@ -244,10 +247,10 @@ class ContractDataLoader:
             op_num += 1
         return pc_to_op_idx
 
-    def prepare_sourcemap(self):
+    def prepare_sourcemap(self, srcmap_str):
         srcmap = {}
 
-        map_items = self.data['srcmap-runtime'].split(";")
+        map_items = srcmap_str.split(";")
 
         for i in range(len(map_items)):
             map_item = map_items[i]

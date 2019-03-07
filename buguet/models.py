@@ -1,14 +1,18 @@
 class Contract:
     def __init__(self, name, src, functions, variables,
-            pc_to_op_idx, srcmap, bin_runtime,
+            bin_runtime, pc_to_op_idx_runtime, srcmap_runtime,
+            bin_init, pc_to_op_idx_init, srcmap_init,
             source_list, sources, source_offsets):
         self.name = name
         self.src = src
         self.functions = functions
         self.variables = variables
-        self.pc_to_op_idx = pc_to_op_idx
-        self.srcmap = srcmap
         self.bin_runtime = bin_runtime
+        self.pc_to_op_idx_runtime = pc_to_op_idx_runtime
+        self.srcmap_runtime = srcmap_runtime
+        self.bin_init = bin_init
+        self.pc_to_op_idx_init = pc_to_op_idx_init
+        self.srcmap_init = srcmap_init
         self.source_list = source_list
         self.sources = sources
         self.source_offsets = source_offsets
@@ -130,3 +134,8 @@ class Map:
     def size(self):
         return 256
 
+class ContractStackElement:
+    def __init__(self, address, contract, is_init):
+        self.address = address
+        self.contract = contract
+        self.is_init = is_init

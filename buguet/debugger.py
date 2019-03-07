@@ -18,7 +18,15 @@ class Debugger:
         self.load_transaction_trace()
         self.init_contracts(contracts_data)
         self.load_transaction()
-        self.load_contract_by_address(self.transaction.to)
+        if self.transaction.to:
+            self.load_contract_by_address(self.transaction.to)
+        else:
+            code =  self.transaction.input.replace("0x", "")
+            contract = self.find_contract_by_init_code(code)
+            tx_receipt = web3.eth.waitForTransactionReceipt(self.transaction.hash)
+            el = ContractStackElement(tx_receipt.contractAddress, contract, True)
+            self.contracts_stack.append(el)
+
         self.block_number = self.transaction.blockNumber
         self.breakpoints = []
 
@@ -63,7 +71,8 @@ class Debugger:
     def load_contract_by_address(self, address):
         code = self.web3.eth.getCode(Web3.toChecksumAddress(address)).hex()
         code = code.replace("0x", "")
-        self.contracts_stack.append([address, self.find_contract_by_code(code)])
+        el = ContractStackElement(address, self.find_contract_by_code(code), False)
+        self.contracts_stack.append(el)
 
     def find_contract_by_code(self, code):
         code = self.cut_bin_metadata(code)
@@ -72,11 +81,21 @@ class Debugger:
                 return contract
         raise Exception("No matching contract found in provided solidity data")
 
+    def find_contract_by_init_code(self, code):
+        code = self.cut_bin_metadata(code)
+        for contract in self.contracts:
+            if self.cut_bin_metadata(contract.bin_init) == code:
+                return contract
+        raise Exception("No matching contract found in provided solidity data")
+
     def current_contract(self):
-        return self.contracts_stack[-1][1]
+        return self.contracts_stack[-1].contract
 
     def current_contract_address(self):
-        return self.contracts_stack[-1][0]
+        return self.contracts_stack[-1].address
+
+    def current_contract_is_init(self):
+        return self.contracts_stack[-1].is_init
 
     def cut_bin_metadata(self, code):
         metadata_start = code.index("a165627a7a72305820")
@@ -89,10 +108,18 @@ class Debugger:
         return self.position >= len(self.struct_logs)
 
     def current_instuction_num(self):
-        return self.current_contract().pc_to_op_idx[self.current_op()['pc']]
+        if self.current_contract_is_init():
+            pc_to_op_idx = self.current_contract().pc_to_op_idx_init
+        else:
+            pc_to_op_idx = self.current_contract().pc_to_op_idx_runtime
+        return pc_to_op_idx[self.current_op()['pc']]
 
     def current_src_fragment(self):
-        return self.current_contract().srcmap[self.current_instuction_num()]
+        if self.current_contract_is_init():
+            srcmap = self.current_contract().srcmap_init
+        else:
+            srcmap = self.current_contract().srcmap_runtime
+        return srcmap[self.current_instuction_num()]
 
     def current_source(self):
         return self.current_contract().sources[self.current_src_fragment().file_idx]
@@ -148,11 +175,41 @@ class Debugger:
             address = op.stack[-2][24:]
             self.load_contract_by_address(address)
             self.bp_stack.append(-1)
-        elif op.op == 'STOP':
+        elif op.op == 'CREATE':
+            offset = int.from_bytes(bytes.fromhex(op.stack[-2]), 'big')
+            length = int.from_bytes(bytes.fromhex(op.stack[-3]), 'big')
+            code = self.memory_as_bytes(op.memory)[offset:offset+length].hex()
+            contract = self.find_contract_by_init_code(code)
+            address = self.scan_created_address()
+            el = ContractStackElement(address, contract, True)
+            self.contracts_stack.append(el)
+        elif op.op in ['STOP', 'RETURN']:
             self.contracts_stack.pop()
+
+    def memory_as_bytes(self, memory):
+        res = bytearray()
+        for x in memory:
+            res += bytes.fromhex(x)
+        return res
+
+    def scan_created_address(self):
+        i = self.position
+        call_depth = 1
+        while True:
+            i += 1
+            op = self.struct_logs[i]
+            if op.op in ['STOP', 'RETURN']:
+                call_depth -= 1
+            if op.op in ['CALL', 'CREATE']:
+                call_depth += 1
+            if call_depth == 0:
+                break
+        return self.struct_logs[i+1].stack[-1][-40:]
 
     def show_lines(self, n = 3, highlight=True):
         src_frag = self.current_src_fragment()
+        if (src_frag.file_idx == -1):
+            return []
         line_num = self.current_line_number()
 
         res = []
@@ -210,7 +267,7 @@ class Debugger:
             if self.is_ended():
                 return
             for bp in self.breakpoints:
-                if (bp.src == self.current_source_path()
+                if (bp.src in self.current_source_path()
                         and bp.line == self.current_line_number() + 1):
                     return
 
@@ -549,7 +606,7 @@ class Debugger:
                     print("Breakpoint is set")
                 else:
                     print("Breakpoint is invalid")
-            elif line == "one_op":
+            elif line == "op":
                 self.print_op()
                 self.advance()
             else:

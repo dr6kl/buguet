@@ -10,8 +10,8 @@ def main():
     parser.add_argument('--rpc', help="RPC of the ethereum node. Default is http://localhost:8545.", default="http://localhost:8545")
     parser.add_argument('combined_json', help="""
         Comma separated list of json files produced by solidity compiler with --combined-json argument.
-        Files should cover all called contracts (original contract can call another contract during transaction).
-        Data which is required is: ast,bin,bin-runtime,srcmap,srcmap-runtime. See solidity docs.
+        Files should cover all called contracts (original contract can call another during transaction).
+        Fields which are required in combined json are ast,bin,bin-runtime,srcmap,srcmap-runtime. See solidity docs.
         Json file also contains the links to source files which will be loaded during debugging (sourceFiles). Either they
         should be absolute or debugger should be run from the folder where they can be resolved.
         """)
