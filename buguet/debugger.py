@@ -40,7 +40,7 @@ class Debugger:
             source_list = contract_data['sourceList']
             sources = []
             for src_path in source_list:
-                sources.append(open(src_path).read().split("\n"))
+                sources.append(open(src_path, "rb").read().split(b"\n"))
 
             for key in contract_data['sources']:
                 base_ast = contract_data['sources'][key]['AST']
@@ -222,13 +222,15 @@ class Debugger:
                     start = src_frag.start - offset
                     end = src_frag.start - offset + src_frag.length
                     if start >= 0 and end <= len(line):
-                        line = line[0:start] + colored(line[start:end], 'red') + line[end:len(line)]
+                        line = str(line[0:start], "utf8") + colored(str(line[start:end], "utf8"), 'red') + str(line[end:len(line)],"utf8")
                     elif start >= 0 and start < len(line):
-                        line = line[0:start] + colored(line[start:len(line)], 'red')
+                        line = str(line[0:start], "utf8") + colored(str(line[start:len(line)], "utf8"), 'red')
                     elif end > 0 and end <= len(line):
-                        line = colored(line[0:end], 'red') + line[end:len(line)]
+                        line = colored(str(line[0:end], "utf8"), 'red') + str(line[end:len(line)], "utf8")
                     elif start < 0 and end > len(line):
-                        line = colored(line, 'red')
+                        line = colored(str(line, "utf8"), 'red')
+                    else:
+                        line = str(line, "utf8")
 
                 res.append([i + 1, line])
         return res
