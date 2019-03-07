@@ -47,6 +47,9 @@ class ContractDataLoader:
             )
 
         self.set_locations(contract)
+        for struct in self.structs.values():
+            if not struct.size:
+                self.set_size(struct)
         return contract
 
     def load_struct_asts(self):
