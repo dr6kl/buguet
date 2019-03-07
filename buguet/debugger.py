@@ -472,7 +472,7 @@ class Debugger:
                 return
         elif type(key_type) == Address:
             key_bytes = bytes(12) + bytes.fromhex(key.replace("0x", ""))
-        elif type(key_type) == Bytes:
+        elif type(key_type) in [Bytes, FixedBytes]:
             key_bytes = bytes.fromhex(key.replace("0x", ""))
         elif type(key_type) == Bool:
             if key == "true":
