@@ -84,13 +84,13 @@ class ContractDataLoader:
         if match:
             return FixedBytes(int(match.group(1)) * 8)
 
-        location_regex = "((storage \w+)|memory)"
+        location_regex = "(( storage \w+)| memory)?"
 
-        match = regex.match(f"bytes {location_regex}$", type_str)
+        match = regex.match(f"bytes{location_regex}$", type_str)
         if match:
             return Bytes()
 
-        match = regex.match(f"string {location_regex}$", type_str)
+        match = regex.match(f"string{location_regex}$", type_str)
         if match:
             return String()
 
@@ -98,7 +98,7 @@ class ContractDataLoader:
         if match:
             return Address()
 
-        match = regex.match(f"struct \w+\.(\w+) {location_regex}$", type_str)
+        match = regex.match(f"struct \w+\.(\w+){location_regex}$", type_str)
         if match:
             struct_name = match.group(1)
             if not struct_name in self.structs:
@@ -109,7 +109,7 @@ class ContractDataLoader:
         if match:
             return Address()
 
-        match = regex.match(f"(.*)\[(\d+)\] {location_regex}$", type_str)
+        match = regex.match(f"(.*)\[(\d+)\]{location_regex}$", type_str)
         if match:
             length = int(match.group(2))
             elemType = self.parse_type(match.group(1))
@@ -122,7 +122,7 @@ class ContractDataLoader:
             result = Map(key_type, value_type)
             return result
 
-        match = regex.match(f"(.*)\[\] {location_regex}$", type_str)
+        match = regex.match(f"(.*)\[\]{location_regex}$", type_str)
         if match:
             elemType = self.parse_type(match.group(1))
             return Array(elemType)
