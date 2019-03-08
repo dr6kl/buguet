@@ -70,7 +70,7 @@ class ContractDataLoader:
     def parse_variable(self, ast):
         return Variable(
                 self.parse_type(ast['attributes']['type']),
-                ast['attributes']['name']
+                ast['attributes'].get('name')
         )
 
     def parse_type(self, type_str):
@@ -184,24 +184,22 @@ class ContractDataLoader:
         src = SrcMap(src_arr[0], src_arr[1], src_arr[2], '')
 
         params = []
+        return_vars = []
         local_vars = []
 
-        return_count = 0
         params_parsed = False
 
         for x in ast['children']:
             if x['name'] == 'ParameterList':
                 if not params_parsed:
-                    if x['children']:
-                        for y in x['children']:
-                            if y['name'] == 'VariableDeclaration':
-                                var_name = y['attributes']['name']
-                                if var_name:
-                                    params.append(self.parse_function_variable(y))
+                    for y in x.get('children', []):
+                        if y['name'] == 'VariableDeclaration':
+                            params.append(self.parse_function_variable(y))
                     params_parsed = True
                 else:
-                    if x['children']:
-                        return_count = len(x['children'])
+                    for y in x.get('children', []):
+                        if y['name'] == 'VariableDeclaration':
+                            return_vars.append(self.parse_function_variable(y))
             if x['name'] == 'Block':
                 def process_function_node(node):
                     if node['name'] == 'VariableDeclaration':
@@ -211,7 +209,9 @@ class ContractDataLoader:
             params[i].location = i
         for i, p in enumerate(local_vars):
            local_vars[i].location = i
-        return Function(name, src, params, local_vars, return_count)
+        for i, p in enumerate(return_vars):
+           return_vars[i].location = i
+        return Function(name, src, params, local_vars, return_vars)
 
     def parse_function_variable(self, ast):
         if 'memory' in ast['attributes']['type']:

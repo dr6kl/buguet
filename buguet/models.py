@@ -41,14 +41,15 @@ class Breakpoint:
         self.line = line
 
 class Function:
-    def __init__(self, name, src, params, local_vars, return_count):
+    def __init__(self, name, src, params, local_vars, return_vars):
         self.name = name
         self.src = src
         self.params = params
         self.local_vars = local_vars
-        self.return_count = return_count
+        self.return_vars = return_vars
         self._params_by_name = {}
         self._local_vars_by_name = {}
+        self._return_vars_by_name = {}
 
     @property
     def params_by_name(self):
@@ -63,6 +64,13 @@ class Function:
             for var in self.local_vars:
                 self._local_vars_by_name[var.name] = var
         return self._local_vars_by_name
+
+    @property
+    def return_vars_by_name(self):
+        if not self._return_vars_by_name:
+            for var in self.return_vars:
+                self._return_vars_by_name[var.name] = var
+        return self._return_vars_by_name
 
 
 class Variable:

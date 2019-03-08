@@ -325,7 +325,12 @@ class Debugger:
             return self.eval_stack(new_var, keys)
         elif var_name in function.local_vars_by_name:
             var = function.local_vars_by_name[var_name]
-            location = bp + var.location + function.return_count
+            location = bp + var.location + len(function.return_vars)
+            new_var = Variable(var.var_type, location = location, location_type = var.location_type)
+            return self.eval_stack(new_var, keys)
+        elif var_name in function.return_vars_by_name:
+            var = function.return_vars_by_name[var_name]
+            location = bp + var.location
             new_var = Variable(var.var_type, location = location, location_type = var.location_type)
             return self.eval_stack(new_var, keys)
         elif var_name in self.current_contract().variables_by_name:
