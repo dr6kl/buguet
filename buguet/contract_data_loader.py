@@ -2,13 +2,14 @@ from buguet.models import *
 import regex
 
 class ContractDataLoader:
-    def __init__(self, data, asts, source_list, sources):
+    def __init__(self, data, asts, source_list, sources, version):
         self.struct_asts = {}
         self.structs = {}
         self.data = data
         self.asts = asts
         self.source_list = source_list
         self.sources = sources
+        self.version = version
 
     def load(self):
         variables = []
@@ -271,6 +272,8 @@ class ContractDataLoader:
 
             if len(arr) > 2 and arr[2] != '':
                 file_idx = int(arr[2])
+                if self.version < [0, 4, 11] and file_idx != -1:
+                    file_idx -= 1
             else:
                 file_idx = srcmap[i-1].file_idx
 
@@ -278,6 +281,7 @@ class ContractDataLoader:
                 jump = arr[3]
             else:
                 jump = srcmap[i-1].jump
+
 
             srcmap[i] = SrcMap(start, length, file_idx, jump)
         return srcmap

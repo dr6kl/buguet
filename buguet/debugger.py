@@ -34,6 +34,8 @@ class Debugger:
         self.contracts = []
 
         for contract_data in contracts_data:
+            version = self.parse_version(contract_data['version'])
+
             contract_ast_by_id = {}
             contract_ast_by_name = {}
 
@@ -56,8 +58,12 @@ class Debugger:
                     asts.append(contract_ast_by_id[contract_id])
                 data = contract_data['contracts'][key]
                 if data['bin']:
-                    contract = ContractDataLoader(data, list(reversed(asts)), source_list, sources).load()
+                    contract = ContractDataLoader(data, list(reversed(asts)), source_list, sources, version).load()
                     self.contracts.append(contract)
+
+    def parse_version(self, version_str):
+        m = regex.match(r".*(\d+)\.(\d+)\.(\d+)*", version_str)
+        return [int(m.group(1)), int(m.group(2)), int(m.group(3))]
 
     def load_transaction(self):
         self.transaction = self.web3.eth.getTransaction(self.transaction_id)
