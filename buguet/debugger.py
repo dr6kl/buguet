@@ -630,6 +630,9 @@ class Debugger:
 
     def print_lines(self, n = 3):
         lines = self.show_lines(n)
+        print()
+        path = self.current_contract().source_list[self.current_src_fragment().file_idx]
+        print(colored(path, "green"))
         for i, line in enumerate(lines):
             if len(lines) // 2 == i:
                 print(" => ", end='')
