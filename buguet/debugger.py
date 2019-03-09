@@ -113,19 +113,22 @@ class Debugger:
     def is_ended(self):
         return self.position >= len(self.struct_logs)
 
-    def current_instuction_num(self):
+    def current_instruction_num(self):
         if self.current_contract_is_init():
             pc_to_op_idx = self.current_contract().pc_to_op_idx_init
         else:
             pc_to_op_idx = self.current_contract().pc_to_op_idx_runtime
-        return pc_to_op_idx[self.current_op()['pc']]
+        return pc_to_op_idx.get(self.current_op().pc, -1)
 
     def current_src_fragment(self):
         if self.current_contract_is_init():
             srcmap = self.current_contract().srcmap_init
         else:
             srcmap = self.current_contract().srcmap_runtime
-        return srcmap[self.current_instuction_num()]
+        instruction_num = self.current_instruction_num()
+        if instruction_num == -1:
+            return SrcMap(-1, -1, -1, -1)
+        return srcmap[instruction_num]
 
     def current_source(self):
         return self.current_contract().sources[self.current_src_fragment().file_idx]
