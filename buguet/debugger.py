@@ -180,7 +180,7 @@ class Debugger:
 
     def check_contract_switch(self):
         op = self.current_op()
-        if op.op == 'CALL':
+        if op.op in ['CALL', 'DELEGATECALL']:
             address = op.stack[-2][24:]
             self.load_contract_by_address(address)
             self.bp_stack.append(-1)
