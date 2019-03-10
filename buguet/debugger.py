@@ -13,7 +13,6 @@ class Debugger:
         self.transaction_id = transaction_id
         self.position = 0
         self.bp_stack = []
-        self.bp_stack.append(-1)
         self.contracts_stack = []
         self.load_transaction_trace()
         self.init_contracts(contracts_data)
@@ -26,6 +25,7 @@ class Debugger:
             tx_receipt = web3.eth.waitForTransactionReceipt(self.transaction.hash)
             el = ContractStackElement(tx_receipt.contractAddress, contract, True)
             self.contracts_stack.append(el)
+            self.bp_stack.append(-1)
 
         self.block_number = self.transaction.blockNumber
         self.breakpoints = []
@@ -77,8 +77,10 @@ class Debugger:
     def load_contract_by_address(self, address):
         code = self.web3.eth.getCode(Web3.toChecksumAddress(address)).hex()
         code = code.replace("0x", "")
-        el = ContractStackElement(address, self.find_contract_by_code(code), False)
-        self.contracts_stack.append(el)
+        if len(code) > 0:
+            el = ContractStackElement(address, self.find_contract_by_code(code), False)
+            self.contracts_stack.append(el)
+            self.bp_stack.append(-1)
 
     def find_contract_by_code(self, code):
         code = self.cut_bin_metadata(code)
@@ -185,7 +187,6 @@ class Debugger:
         if op.op in ['CALL', 'DELEGATECALL']:
             address = op.stack[-2][24:]
             self.load_contract_by_address(address)
-            self.bp_stack.append(-1)
         elif op.op == 'CREATE':
             offset = int.from_bytes(bytes.fromhex(op.stack[-2]), 'big')
             length = int.from_bytes(bytes.fromhex(op.stack[-3]), 'big')
@@ -607,16 +608,20 @@ class Debugger:
             line = input("Command: ")
             if line == "next" or line == "n":
                 self.next()
-                self.print_lines()
+                if not self.is_ended():
+                    self.print_lines()
             elif line == "step" or line == "s":
                 self.step()
-                self.print_lines()
+                if not self.is_ended():
+                    self.print_lines()
             elif line == "stepout" or line == "so":
                 self.stepout()
-                self.print_lines()
+                if not self.is_ended():
+                    self.print_lines()
             elif line == "continue" or line == "c":
                 self.continu()
-                self.print_lines()
+                if not self.is_ended():
+                    self.print_lines()
             elif line == "stack" or line == "st":
                 self.print_stack()
             elif line == "memory" or line == "mem":
