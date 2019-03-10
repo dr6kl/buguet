@@ -600,17 +600,21 @@ class Debugger:
             return
 
     def repl(self):
+        self.print_lines()
         while not self.is_ended():
-            self.print_lines()
             line = input("Command: ")
             if line == "next" or line == "n":
                 self.next()
+                self.print_lines()
             elif line == "step" or line == "s":
                 self.step()
+                self.print_lines()
             elif line == "stepout" or line == "so":
                 self.stepout()
+                self.print_lines()
             elif line == "continue" or line == "c":
                 self.continu()
+                self.print_lines()
             elif line == "stack" or line == "st":
                 self.print_stack()
             elif line == "memory" or line == "mem":
@@ -625,6 +629,7 @@ class Debugger:
             elif line == "op":
                 self.print_op()
                 self.advance()
+                self.print_lines()
             else:
                 print(self.eval(line))
 
