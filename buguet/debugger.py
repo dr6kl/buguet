@@ -104,7 +104,9 @@ class Debugger:
         return self.contracts_stack[-1].is_init
 
     def cut_bin_metadata(self, code):
-        metadata_start = code.index("a165627a7a72305820")
+        metadata_start = code.find("a165627a7a72305820")
+        if metadata_start == -1:
+            return code
         return code[:metadata_start]
 
     def current_op(self):
