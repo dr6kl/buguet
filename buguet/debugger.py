@@ -6,6 +6,7 @@ import regex
 from buguet.models import *
 from buguet.contract_data_loader import *
 from os import path
+from buguet.tracer import Tracer
 
 class Debugger:
     def __init__(self, web3, contracts_data, transaction_id):
@@ -17,17 +18,14 @@ class Debugger:
         self.load_transaction_trace()
         self.init_contracts(contracts_data)
         self.load_transaction()
-        if self.transaction.to:
-            self.load_contract_by_address(self.transaction.to)
-        else:
-            code =  self.transaction.input.replace("0x", "")
-            contract = self.find_contract_by_init_code(code)
-            tx_receipt = web3.eth.waitForTransactionReceipt(self.transaction.hash)
-            el = ContractStackElement(tx_receipt.contractAddress, contract, True)
-            self.contracts_stack.append(el)
-            self.bp_stack.append(-1)
 
-        self.block_number = self.transaction.blockNumber
+        if self.transaction.to:
+            self.load_contract_by_address(self.transaction.to, False)
+        else:
+            tx_receipt = web3.eth.waitForTransactionReceipt(self.transaction.hash)
+            addr = tx_receipt.contractAddress
+            self.load_contract_by_address(addr, True)
+
         self.breakpoints = []
 
     def init_contracts(self, contracts_data):
@@ -69,16 +67,14 @@ class Debugger:
         self.transaction = self.web3.eth.getTransaction(self.transaction_id)
 
     def load_transaction_trace(self):
-        print("Loading transaction trace...")
-        res = self.web3.manager.request_blocking("debug_traceTransaction", [self.transaction_id])
-        print("Done")
-        self.struct_logs = res.structLogs
+        self.tracer = Tracer(self.web3, self.transaction_id)
+        self.trace_logs = self.tracer.get_base_logs()
 
-    def load_contract_by_address(self, address):
+    def load_contract_by_address(self, address, is_init):
         code = self.web3.eth.getCode(Web3.toChecksumAddress(address)).hex()
         code = code.replace("0x", "")
         if len(code) > 0:
-            el = ContractStackElement(address, self.find_contract_by_code(code), False)
+            el = ContractStackElement(address, self.find_contract_by_code(code), is_init)
             self.contracts_stack.append(el)
             self.bp_stack.append(-1)
 
@@ -112,17 +108,17 @@ class Debugger:
         return code[:metadata_start]
 
     def current_op(self):
-        return self.struct_logs[self.position]
+        return self.trace_logs[self.position]
 
     def is_ended(self):
-        return self.position >= len(self.struct_logs)
+        return self.position >= len(self.trace_logs)
 
     def current_instruction_num(self):
         if self.current_contract_is_init():
             pc_to_op_idx = self.current_contract().pc_to_op_idx_init
         else:
             pc_to_op_idx = self.current_contract().pc_to_op_idx_runtime
-        return pc_to_op_idx.get(self.current_op().pc, -1)
+        return pc_to_op_idx.get(self.current_op()["pc"], -1)
 
     def current_src_fragment(self):
         if self.current_contract_is_init():
@@ -163,13 +159,7 @@ class Debugger:
                 return f
 
     def get_storage_at_address(self, address):
-        op = self.current_op()
-        if op.storage and address.hex() in op.storage:
-            return bytes.fromhex(op.storage[address.hex()])
-        else:
-            return self.web3.eth.getStorageAt(
-                    Web3.toChecksumAddress(self.current_contract_address()),
-                    address, self.block_number - 1)
+        return self.tracer.get_storage(self.position, address.hex())
 
     def advance(self):
         self.check_function_switch()
@@ -178,24 +168,21 @@ class Debugger:
 
     def check_function_switch(self):
         if self.current_src_fragment().jump == 'i':
-            self.bp_stack.append(len(self.current_op().stack) - 1)
+            self.bp_stack.append(self.current_op()['stack_length'] - 1)
         if self.current_src_fragment().jump == 'o' and len(self.bp_stack) > 0:
             self.bp_stack.pop()
 
     def check_contract_switch(self):
         op = self.current_op()
-        if op.op in ['CALL', 'DELEGATECALL']:
-            address = op.stack[-2][24:]
-            self.load_contract_by_address(address)
-        elif op.op == 'CREATE':
-            offset = int.from_bytes(bytes.fromhex(op.stack[-2]), 'big')
-            length = int.from_bytes(bytes.fromhex(op.stack[-3]), 'big')
-            code = self.memory_as_bytes(op.memory)[offset:offset+length].hex()
-            contract = self.find_contract_by_init_code(code)
-            address = self.scan_created_address()
-            el = ContractStackElement(address, contract, True)
-            self.contracts_stack.append(el)
-        elif op.op in ['STOP', 'RETURN']:
+        if op['op'] in ['CALL', 'DELEGATECALL']:
+            address = op['new_address']
+            self.load_contract_by_address(address, False)
+        elif op['op'] == 'CREATE':
+            address = op['new_address']
+            self.load_contract_by_address(address, True)
+        elif op['op'] in ['STOP', 'RETURN']:
+            if self.current_contract_is_init():
+                self.bp_stack.pop()
             self.contracts_stack.pop()
 
     def memory_as_bytes(self, memory):
@@ -203,20 +190,6 @@ class Debugger:
         for x in memory:
             res += bytes.fromhex(x)
         return res
-
-    def scan_created_address(self):
-        i = self.position
-        call_depth = 1
-        while True:
-            i += 1
-            op = self.struct_logs[i]
-            if op.op in ['STOP', 'RETURN']:
-                call_depth -= 1
-            if op.op in ['CALL', 'CREATE']:
-                call_depth += 1
-            if call_depth == 0:
-                break
-        return self.struct_logs[i+1].stack[-1][-40:]
 
     def show_lines(self, n = 3, highlight=True):
         src_frag = self.current_src_fragment()
@@ -286,22 +259,29 @@ class Debugger:
                     return
 
     def print_stack(self):
-        stack = self.struct_logs[self.position]['stack']
-        for x in reversed(stack):
-            print(x)
-        print("\n\n")
+        stack = self.tracer.get_all_stack(self.position)
+        for i, x in enumerate(reversed(stack)):
+            print(x.hex())
+            if (len(stack) - i - 1) in self.bp_stack:
+                print()
+        print("-----------")
+        print("\n")
 
     def print_memory(self):
-        for i, x in enumerate(self.struct_logs[self.position]['memory']):
-            print(hex(i * 32) + ': ' + x)
-        print("\n\n")
+        mem = self.tracer.get_all_memory(self.position)
+        for i, w in enumerate(mem):
+            print(hex(i * 32) + ': ' + w)
+        print("-----------")
+        print("\n")
 
     def print_op(self):
-        op = self.struct_logs[self.position].op
-        print(op, end=' ')
-        if str.startswith(op, 'PUSH') and self.position < len(self.struct_logs):
-            next_stack = self.struct_logs[self.position + 1]['stack']
-            print(next_stack[len(next_stack) - 1], end='')
+        op = self.current_op()
+        frag = self.current_src_fragment()
+        print(op['op'], end = '')
+        if op.get('arg'):
+            print(' ' + int(op['arg']).to_bytes(32, 'big').hex(), end = '')
+        if frag.jump != '-':
+            print(' ' + frag.jump, end = '')
         print()
 
     def parse_expression(self, str):
@@ -328,7 +308,10 @@ class Debugger:
 
         bp = self.bp_stack[-1]
         if bp == -1:
-            bp = len(function.params) + 2
+            if self.current_contract_is_init():
+                bp = len(function.params) + 0
+            else:
+                bp = len(function.params) + 2
 
         if var_name in function.params_by_name:
             var = function.params_by_name[var_name]
@@ -352,10 +335,9 @@ class Debugger:
             return "Can not evaluate expression"
 
     def eval_stack(self, var, keys):
-        stack = self.current_op().stack
-        if var.location >= len(stack):
+        if var.location >= self.current_op()['stack_length']:
             return "Variable is not yet initialized"
-        data = bytes.fromhex(stack[var.location])
+        data = self.tracer.get_stack(self.position, var.location)
         if type(var.var_type) in [Int, Uint, FixedBytes, Bool, Address]:
             return self.elementary_type_as_obj(var.var_type, data)
         else:
@@ -367,7 +349,7 @@ class Debugger:
                 return self.eval_storage(new_var, keys)
 
     def get_memory(self, idx):
-        return bytes.fromhex(self.current_op().memory[idx//32])
+        return self.tracer.get_memory(self.position, idx)
 
     def eval_memory(self, var, keys):
         if type(var.var_type) in [Int, Uint, FixedBytes, Bool, Address]:
@@ -636,7 +618,8 @@ class Debugger:
             elif line == "op":
                 self.print_op()
                 self.advance()
-                self.print_lines()
+                if not self.is_ended():
+                    self.print_lines()
             else:
                 print(self.eval(line))
 
@@ -644,7 +627,7 @@ class Debugger:
         lines = self.show_lines(n)
         print()
         path = self.current_contract().source_list[self.current_src_fragment().file_idx]
-        print(colored(self.current_contract_address() , "blue") + "#" + colored(path, "green"))
+        print(colored(self.current_contract_address(), "blue") + "#" + colored(path, "green"))
         for i, line in enumerate(lines):
             if len(lines) // 2 == i:
                 print(" => ", end='')

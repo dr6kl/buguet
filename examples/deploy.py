@@ -17,16 +17,14 @@ if len(sys.argv) == 1 or sys.argv[1] == "deploy":
 
     data = json.load(open("out.json"))
     contract_data = data['contracts']['Foo.sol:Foo']
-    counter_contract_data = data['contracts']['Foo.sol:Counter']
 
-    tx_hash = web3.eth.contract(abi=counter_contract_data['abi'], bytecode=counter_contract_data['bin']).constructor().transact()
-    tx_receipt = web3.eth.waitForTransactionReceipt(tx_hash)
-    counter_address = tx_receipt['contractAddress']
-
-    tx_hash = web3.eth.contract(abi=contract_data['abi'], bytecode=contract_data['bin']).constructor(counter_address).transact()
+    tx_hash = web3.eth.contract(abi=contract_data['abi'], bytecode=contract_data['bin']).constructor().transact()
     tx_receipt = web3.eth.waitForTransactionReceipt(tx_hash)
     f = open("address.txt", "w")
     f.write(tx_receipt['contractAddress'])
+    f.close()
+    f = open("transaction_init.txt", "w")
+    f.write(tx_receipt.transactionHash.hex())
     f.close()
 
 if len(sys.argv) == 1 or sys.argv[1] == "transact":

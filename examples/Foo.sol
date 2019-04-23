@@ -5,6 +5,11 @@ import "Bar.sol";
 contract Counter {
   uint cnt = 12;
 
+  function Counter() {
+    uint b = 13;
+    uint d = aaa(b, 1);
+  }
+
   function increment() external {
     uint x = aaa(1, 2);
     cnt = cnt + x;
@@ -71,7 +76,7 @@ contract Foo is Bar {
   mapping(string => uint256)[] bbb;
 
 
-  function Foo(address counter_address) public {
+  function Foo() public {
     myMap2["foo"]["bar"] = 13;
     myMap2["bar"]["foo"] = 17;
     myArray.length = 1001;
@@ -123,7 +128,7 @@ contract Foo is Bar {
     zz2["foo"].push(strct);
     zz2["foo"].push(strct1);
 
-    counter = Counter(counter_address);
+    uint b = createCounter(18);
 
     ccc.x1[12] = 15;
     ccc.x2[12] = 15;
@@ -132,6 +137,11 @@ contract Foo is Bar {
     ccc.x5[bts] = 15;
     ccc.x6[true] = 15;
     ccc.x6[false] = 11;
+  }
+
+  function createCounter(uint a) returns (uint) {
+    counter = new Counter();
+    return a + 2;
   }
 
   function doSomething(uint a, uint8 b, uint8 d) public {

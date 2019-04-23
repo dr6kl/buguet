@@ -1,0 +1,171 @@
+class Tracer:
+    def __init__(self, web3, transaction_id):
+        self.web3 = web3
+        self.transaction_id = transaction_id
+
+    def get_base_logs(self):
+        tracer = """
+        {
+            logs: [],
+            add_arg: false,
+
+            step: function(log, db) {
+                if (this.logs.length > 0) {
+                    var prev_log = this.logs[this.logs.length-1];
+                    var prev_op = prev_log.op.toString();
+                    var addr = toHex(log.contract.getAddress());
+                    if (['CALL', 'DELEGATECALL', 'CREATE' ].indexOf(prev_op) != -1) {
+                        prev_log.new_address = addr;
+                    }
+                }
+                var op = log.op.toString();
+                if (this.add_arg) {
+                    var prev_log = this.logs[this.logs.length-1];
+                    prev_log.arg = log.stack.peek(0);
+                    this.add_arg = false;
+                }
+                if (op.startsWith('PUSH')) {
+                    this.add_arg = true;
+                }
+                this.logs.push({pc: log.getPC(), op: log.op.toString(), stack_length: log.stack.length()});
+            },
+
+            result: function() {
+                return this.logs;
+            },
+
+            fault: function() {
+            }
+        }
+        """
+        return self.do_request(tracer)
+
+    def get_stack(self, position, i):
+        tracer = """
+        {
+            val: null,
+            pos: 0,
+
+            step: function(log, db) {
+                if (this.pos == """+str(position)+""") {
+                   this.val = log.stack.peek(log.stack.length() - """+str(i)+""" - 1);
+                }
+                this.pos += 1;
+            },
+
+            result: function() {
+                return this.val;
+            },
+
+            fault: function() {
+            }
+        }
+        """
+        return int(self.do_request(tracer)).to_bytes(32, "big")
+
+    def get_all_stack(self, position):
+        tracer = """
+        {
+            stack: [],
+            pos: 0,
+
+            step: function(log, db) {
+                if (this.pos == """+str(position)+""") {
+                    for (var i = 0; i < log.stack.length(); i++) {
+                       this.stack.push(log.stack.peek(log.stack.length() - i - 1));
+                    }
+                }
+                this.pos += 1;
+            },
+
+            result: function() {
+                return this.stack;
+            },
+
+            fault: function() {
+            }
+        }
+        """
+        return list(map(lambda x: int(x).to_bytes(32, "big"), self.do_request(tracer)))
+
+    def get_storage(self, position, key):
+        tracer = """
+        {
+            val: null,
+            pos: 0,
+
+            step: function(log, db) {
+                if (this.pos == """+str(position)+""") {
+                    this.val = toHex(db.getState(log.contract.getAddress(), toWord('"""+key+"""')));
+                }
+                this.pos += 1;
+            },
+
+            result: function() {
+                return this.val;
+            },
+
+            fault: function() {
+            }
+        }
+        """
+        return bytes.fromhex(self.do_request(tracer).replace('0x', ''))
+
+    def get_memory(self, position, i):
+        tracer = """
+        {
+            val: null,
+            pos: 0,
+
+            step: function(log, db) {
+                if (this.pos == """+str(position)+""") {
+                    this.val = toHex(log.memory.slice("""+str(i)+""", """+str(i)+"""+32));
+                }
+                this.pos += 1;
+            },
+
+            result: function() {
+                return this.val;
+            },
+
+            fault: function() {
+            }
+        }
+        """
+        res = self.do_request(tracer)
+        return bytes.fromhex(res.replace('0x', ''))
+
+    def get_all_memory(self, position):
+        tracer = """
+        {
+            mem: [],
+            pos: 0,
+
+            step: function(log, db) {
+                if (this.pos == """+str(position)+""") {
+                    for (var i = 0; i < 1000000; i++) {
+                        var word = toHex(log.memory.slice(i*32, (i+1)*32));
+                        if (word == '0x') {
+                            break;
+                        }
+                        this.mem.push(word);
+                    }
+                }
+                this.pos += 1;
+            },
+
+            result: function() {
+                return this.mem;
+            },
+
+            fault: function() {
+            }
+        }
+        """
+        res = self.do_request(tracer)
+        return  res
+
+    def do_request(self, tracer):
+        return self.web3.manager.request_blocking("debug_traceTransaction", [self.transaction_id, {"tracer": tracer}])
+
+
