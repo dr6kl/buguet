@@ -20,10 +20,10 @@ class Debugger:
         self.load_transaction()
 
         if self.transaction.to:
-            self.load_contract_by_address(self.transaction.to, False)
+            self.load_contract_by_address(self.transaction.to.lower().replace('0x', ''), False)
         else:
             tx_receipt = web3.eth.waitForTransactionReceipt(self.transaction.hash)
-            addr = tx_receipt.contractAddress
+            addr = tx_receipt.contractAddress.lower().replace('0x', '')
             self.load_contract_by_address(addr, True)
 
         self.breakpoints = []
