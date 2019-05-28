@@ -29,6 +29,7 @@ class ContractDataLoader:
                     functions.append(func)
                 if x['name'] == 'VariableDeclaration' and not x['attributes'].get('constant'):
                     var = self.parse_variable(x)
+                    var.location_type = 'storage'
                     variables.append(var)
 
         contract = Contract(

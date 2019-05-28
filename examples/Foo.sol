@@ -107,9 +107,6 @@ contract Foo is Bar {
     arr[1] = 12;
     arr[2] = 100;
     arr_aa[4][3][2][1] = 15;
-    //for (i = 0; i < 100; i++) {
-      //arr[i] = uint8(i);
-    //}
     strct1.a = 3;
     strct1.b = 24;
     strct1.c = "hello world";
@@ -187,37 +184,26 @@ contract Foo is Bar {
   }
 
   function foo2(uint a, MyStruct b, uint c1) internal returns (uint) {
+    string memory st = "hello hello hello";
     return 0;
   }
 
   function foo(uint a, uint b, uint c1) internal returns (uint) {
     uint d;
     uint[] memory ee = new uint[](7);
-    //string memory mstr = "paaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaap";
     bytes memory mbytes = new bytes(100);
     for (uint i = 0; i < 100; i++) {
       mbytes[i] = 0xaa;
     }
-    //string memory hh;
-    //string storage hh1;
-    //string hh2;
     ee[3] = 502;
     MyStruct[] memory gg = new MyStruct[](7);
     MyStruct[10] memory hh;
     MyStruct storage sss;
 
-    //sss = strct1;
-    //sss.a = 19;
     sss = strct;
-    //sss.a = 26;
 
     gg[3] = sss;
     hh[8] = sss;
-    //uint w = gg[0].a;
-    //uint8[10] k;
-    //k[0] = 55;
-    //k[2] = 93;
-    //k[8] = 5;
     uint8 l = 6;
     ee[5] = 14;
     uint256 vvv = 8;

@@ -7,11 +7,22 @@ from buguet.models import *
 from buguet.contract_data_loader import *
 from os import path
 from buguet.tracer import Tracer
+from buguet.parser import *
+import json
+import copy
+import os
+
+class EvalFailed(Exception):
+    pass
+
+class VarNotYetInitialized(Exception):
+    pass
 
 class Debugger:
-    def __init__(self, web3, contracts_data, transaction_id):
+    def __init__(self, web3, contracts_data, transaction_id, source_roots = []):
         self.web3 = web3;
         self.transaction_id = transaction_id
+        self.source_roots = source_roots
         self.position = 0
         self.bp_stack = []
         self.contracts_stack = []
@@ -37,10 +48,13 @@ class Debugger:
             contract_ast_by_id = {}
             contract_ast_by_name = {}
 
-            source_list = contract_data['sourceList']
+            source_list = self.resolve_source_list(contract_data['sourceList'])
             sources = []
             for src_path in source_list:
-                sources.append(open(src_path, "rb").read().split(b"\n"))
+                f = open(src_path, "rb")
+                src = f.read()
+                f.close()
+                sources.append(src.split(b"\n"))
 
             for key in contract_data['sources']:
                 base_ast = contract_data['sources'][key]['AST']
@@ -58,6 +72,23 @@ class Debugger:
                 if data['bin']:
                     contract = ContractDataLoader(data, list(reversed(asts)), source_list, sources, version).load()
                     self.contracts.append(contract)
+
+    def resolve_source_list(self, source_list):
+        result = []
+        for src_path in source_list:
+            if not os.path.isabs(src_path):
+                abs_path = None
+                for src_root in self.source_roots:
+                    p = os.path.abspath(os.path.join(src_root, src_path))
+                    if os.path.exists(p):
+                        abs_path = p
+                        break
+                if not abs_path:
+                    raise Exception(f"Can not find file: {src_path}")
+                result.append(abs_path)
+            else:
+                result.append(src_path)
+        return result
 
     def parse_version(self, version_str):
         m = regex.match(r".*(\d+)\.(\d+)\.(\d+)*", version_str)
@@ -152,7 +183,8 @@ class Debugger:
             elif offset >= s + len(self.current_source()[idx]) + 1:
                 start = idx + 1
 
-    def current_func(self, contract):
+    def current_func(self):
+        contract = self.current_contract()
         start = self.current_src_fragment().start
         for f in contract.functions:
             if start >= f.src.start and start < f.src.start + f.src.length:
@@ -191,7 +223,7 @@ class Debugger:
             res += bytes.fromhex(x)
         return res
 
-    def show_lines(self, n = 3, highlight=True):
+    def show_lines(self, n = 3):
         src_frag = self.current_src_fragment()
         if (src_frag.file_idx == -1):
             return []
@@ -202,20 +234,19 @@ class Debugger:
             if i >= 0  and i < len(self.current_source()):
                 line = self.current_source()[i]
 
-                if highlight:
-                    offset = self.current_contract().source_offsets[src_frag.file_idx][i]
-                    start = src_frag.start - offset
-                    end = src_frag.start - offset + src_frag.length
-                    if start >= 0 and end <= len(line):
-                        line = str(line[0:start], "utf8") + colored(str(line[start:end], "utf8"), 'red') + str(line[end:len(line)],"utf8")
-                    elif start >= 0 and start < len(line):
-                        line = str(line[0:start], "utf8") + colored(str(line[start:len(line)], "utf8"), 'red')
-                    elif end > 0 and end <= len(line):
-                        line = colored(str(line[0:end], "utf8"), 'red') + str(line[end:len(line)], "utf8")
-                    elif start < 0 and end > len(line):
-                        line = colored(str(line, "utf8"), 'red')
-                    else:
-                        line = str(line, "utf8")
+                offset = self.current_contract().source_offsets[src_frag.file_idx][i]
+                start = src_frag.start - offset
+                end = src_frag.start - offset + src_frag.length
+                if start >= 0 and end <= len(line):
+                    line = str(line[0:start], "utf8") + colored(str(line[start:end], "utf8"), 'red') + str(line[end:len(line)],"utf8")
+                elif start >= 0 and start < len(line):
+                    line = str(line[0:start], "utf8") + colored(str(line[start:len(line)], "utf8"), 'red')
+                elif end > 0 and end <= len(line):
+                    line = colored(str(line[0:end], "utf8"), 'red') + str(line[end:len(line)], "utf8")
+                elif start < 0 and end > len(line):
+                    line = colored(str(line, "utf8"), 'red')
+                else:
+                    line = str(line, "utf8")
 
                 res.append([i + 1, line])
         return res
@@ -254,7 +285,7 @@ class Debugger:
             if self.is_ended():
                 return
             for bp in self.breakpoints:
-                if (bp.src in self.current_source_path()
+                if (bp.src == self.current_source_path()
                         and bp.line == self.current_line_number() + 1):
                     return
 
@@ -284,27 +315,31 @@ class Debugger:
             print(' ' + frag.jump, end = '')
         print()
 
-    def parse_expression(self, str):
-        m = regex.match(r"^(.+?)((\[(.+?)\])|(\.(.+?)))*$", str)
-        if not m:
-            return None
-        result = []
-        result.append(m.captures(1)[0])
-        for capture in m.captures(2):
-            if capture.startswith("["):
-                result.append(capture[1:-1])
-            else:
-                result.append(capture[1:])
-        return result
-
     def eval(self, line):
-        expr = self.parse_expression(line)
-        if not expr:
-            return None
+        try:
+            expr = Parser(line).parse()
+            return self.eval_expr(expr)
+        except ParsingFailed:
+            return "Can not parse expression"
+        except EvalFailed:
+            return "Can not evaluate expression"
+        except VarNotYetInitialized:
+            return "Variable is not yet initialized"
 
-        var_name = expr[0]
-        keys = expr[1:]
-        function = self.current_func(self.current_contract())
+    def eval_expr(self, expr):
+        if type(expr) is Literal:
+            return expr.value
+        elif type(expr) is Name:
+            return self.eval_var(expr.value)
+        elif type(expr) is ApplyBrackets:
+            return self.eval_apply_brackets(expr)
+        elif type(expr) is ApplyDot:
+            return self.eval_apply_dot(expr)
+
+    def eval_var(self, var_name):
+        function = self.current_func()
+        if not function:
+            raise EvalFailed()
 
         bp = self.bp_stack[-1]
         if bp == -1:
@@ -313,94 +348,110 @@ class Debugger:
             else:
                 bp = len(function.params) + 2
 
+        var = None
+        location = None
+
         if var_name in function.params_by_name:
             var = function.params_by_name[var_name]
             location = bp - len(function.params) + var.location
-            new_var = Variable(var.var_type, location = location, location_type = var.location_type)
-            return self.eval_stack(new_var, keys)
         elif var_name in function.local_vars_by_name:
             var = function.local_vars_by_name[var_name]
             location = bp + var.location + len(function.return_vars)
-            new_var = Variable(var.var_type, location = location, location_type = var.location_type)
-            return self.eval_stack(new_var, keys)
         elif var_name in function.return_vars_by_name:
             var = function.return_vars_by_name[var_name]
             location = bp + var.location
-            new_var = Variable(var.var_type, location = location, location_type = var.location_type)
-            return self.eval_stack(new_var, keys)
-        elif var_name in self.current_contract().variables_by_name:
-            var = self.current_contract().variables_by_name[var_name]
-            return self.eval_storage(var, keys)
-        else:
-            return "Can not evaluate expression"
 
-    def eval_stack(self, var, keys):
-        if var.location >= self.current_op()['stack_length']:
-            return "Variable is not yet initialized"
-        data = self.tracer.get_stack(self.position, var.location)
-        if type(var.var_type) in [Int, Uint, FixedBytes, Bool, Address]:
-            return self.elementary_type_as_obj(var.var_type, data)
+        if var:
+            if location >= self.current_op()['stack_length']:
+                raise VarNotYetInitialized()
+            data = self.tracer.get_stack(self.position, location)
+            if type(var.var_type) in [Int, Uint, FixedBytes, Bool, Address]:
+                return self.elementary_type_as_obj(var.var_type, data)
+            else:
+                new_location = (int).from_bytes(data, 'big')
+                new_var = Variable(var.var_type, location = new_location, offset = 0, location_type = var.location_type)
+                if var.location_type == 'memory':
+                    return self.eval_memory(new_var)
+                elif var.location_type == 'storage':
+                    return self.eval_storage(new_var)
+                else:
+                    raise EvalFailed()
+
+        if var_name in self.current_contract().variables_by_name:
+            var = self.current_contract().variables_by_name[var_name]
+            return self.eval_storage(var)
         else:
-            location = (int).from_bytes(data, 'big')
-            new_var = Variable(var.var_type, location = location, offset = 0)
-            if var.location_type == 'memory':
-                return self.eval_memory(new_var, keys)
-            elif var.location_type == 'storage':
-                return self.eval_storage(new_var, keys)
+            raise EvalFailed()
+
+    def eval_apply_brackets(self, expr):
+        var = self.eval_expr(expr.left)
+        key = self.eval_expr(expr.right)
+        if not type(var) is Variable:
+            raise EvalFailed()
+        if var.location_type == 'memory':
+            if type(var.var_type) in [Array, FixedArray]:
+                return self.eval_memory_array_at_idx(var, key)
+            else:
+                raise EvalFailed()
+        elif var.location_type == 'storage':
+            if type(var.var_type) is Map:
+                return self.eval_storage_map_at_key(var, key)
+            elif type(var.var_type) is FixedArray:
+                return self.eval_storage_fixed_array_at_idx(var, key)
+            elif type(var.var_type) is Array:
+                return self.eval_storage_array_at_idx(var, key)
+            else:
+                raise EvalFailed()
+        else:
+            raise EvalFailed()
+
+    def eval_apply_dot(self, expr):
+        var = self.eval_expr(expr.left)
+        if not type(var) is Variable or not type(var.var_type) is Struct:
+            raise EvalFailed()
+        key = expr.right.value
+        if var.location_type == 'memory':
+            return self.eval_memory_struct_at_key(var, key)
+        elif var.location_type == 'storage':
+            return self.eval_storage_struct_at_key(var, key)
+        else:
+            raise EvalFailed()
 
     def get_memory(self, idx):
         return self.tracer.get_memory(self.position, idx)
 
-    def eval_memory(self, var, keys):
+    def eval_memory(self, var):
         if type(var.var_type) in [Int, Uint, FixedBytes, Bool, Address]:
             return self.eval_memory_elementary_type(var)
-        if type(var.var_type) in [Array, FixedArray]:
-            return self.eval_memory_array(var, keys)
-        if type(var.var_type) is Struct:
-            return self.eval_memory_struct(var, keys)
-        if type(var.var_type) in [String, Bytes]:
+        elif type(var.var_type) in [String, Bytes]:
             return self.eval_memory_string_or_bytes(var)
+        else:
+            return var
 
     def eval_memory_elementary_type(self, var):
         data = self.get_memory(var.location)
         return self.elementary_type_as_obj(var.var_type, data)
 
-    def eval_memory_array(self, var, keys):
-        if keys:
-            if type(var.var_type) == FixedArray:
-                idx = int(keys[0])
-            elif type(var.var_type) == Array:
-                idx = int(keys[0]) + 1
-            addr = var.location + idx * 32
-            if not type(var.var_type.element_type) in [Int, Uint, FixedBytes, Bool, Address]:
-                addr = (int).from_bytes(self.get_memory(addr), 'big')
-            new_var = Variable(var.var_type.element_type, location = addr)
-            return self.eval_memory(new_var, keys[1:])
-        else:
-            if type(var.var_type) == FixedArray:
-                length = var.var_type.length
-            elif type(var.var_type) == Array:
-                length = (int).from_bytes(self.get_memory(var.location), 'big')
-            result = []
-            for i in range(length):
-                result.append(self.eval_memory(var, [i]))
-            return result
+    def eval_memory_array_at_idx(self, var, idx):
+        if type(var.var_type) is FixedArray:
+            off = idx
+        elif type(var.var_type) is Array:
+            off = idx + 1
+        addr = var.location + off * 32
+        if type(var.var_type.element_type) in [String, Bytes, Struct, Array, FixedArray]:
+            addr = int.from_bytes(self.get_memory(addr), byteorder='big')
+        new_var = Variable(var.var_type.element_type, location = addr, location_type = 'memory')
+        return self.eval_memory(new_var)
 
-    def eval_memory_struct(self, var, keys):
-        if keys:
-            key = keys[0]
-            for i, field in enumerate(var.var_type.variables):
-                if field.name == key:
-                    addr = var.location + i * 32
-                    if not type(field.var_type) in [Int, Uint, FixedBytes, Bool, Address]:
-                        addr = (int).from_bytes(self.get_memory(addr), 'big')
-                    new_var = Variable(field.var_type, location = addr)
-                    return self.eval_memory(new_var, keys[1:])
-        else:
-            result = {}
-            for field in var.var_type.variables:
-                result[field.name] = self.eval_memory_struct(var, [field.name])
-            return result
+    def eval_memory_struct_at_key(self, var, key):
+        for i, field in enumerate(var.var_type.variables):
+            if field.name == key:
+                addr = var.location + i * 32
+                if type(field.var_type) in [String, Bytes, Struct, Array, FixedArray]:
+                    addr = int.from_bytes(self.get_memory(addr), byteorder='big')
+                new_var = Variable(field.var_type, location = addr, location_type = 'memory')
+                return self.eval_memory(new_var)
+        raise EvalFailed()
 
     def eval_memory_string_or_bytes(self, var):
         result = bytes()
@@ -409,6 +460,22 @@ class Debugger:
         for i in range(num_memory_words):
             data = self.get_memory(var.location + (i + 1) * 32)[:length - i*32]
             result += data
+        return self.elementary_type_as_obj(var.var_type, result)
+
+    def eval_storage(self, var):
+        if type(var.var_type) in [Int, Uint, FixedBytes, Bool, Address]:
+            return self.eval_storage_elementary_type(var)
+        elif type(var.var_type) in [String, Bytes]:
+            return self.eval_storage_string_or_bytes(var)
+        else:
+            return var
+
+    def eval_storage_elementary_type(self, var):
+        address = var.location.to_bytes(32, byteorder='big')
+        result = self.get_storage_at_address(address)
+        result_int = int.from_bytes(result, byteorder='big')
+        result_int = (result_int >> var.offset) & ((2 << var.var_type.size - 1) - 1)
+        result = result_int.to_bytes(var.var_type.size // 8, byteorder='big')
         return self.elementary_type_as_obj(var.var_type, result)
 
     def eval_storage_string_or_bytes(self, var):
@@ -433,97 +500,6 @@ class Debugger:
 
         return self.elementary_type_as_obj(var.var_type, result)
 
-    def eval_storage_fixed_array(self, var, keys):
-        if keys:
-            idx = int(keys[0])
-            return self.eval_storage_fixed_array_at_idx(var, keys[1:], idx)
-        else:
-            result = []
-            for i in range(0, var.var_type.length):
-                result.append(self.eval_storage_fixed_array_at_idx(var, [], i))
-            return result
-
-    def eval_storage_fixed_array_at_idx(self, var, keys, idx):
-        element_type = var.var_type.element_type
-        rel_location, offset = self.location_and_offset_for_array_idx(var.var_type, idx)
-        location = var.location + rel_location
-        new_var = Variable(element_type, location = location, offset = offset)
-        return self.eval_storage(new_var, keys)
-
-    def eval_storage_map(self, var, keys):
-        if not keys:
-            return "Mapping"
-
-        key = keys[0]
-        key_bytes = None
-
-        key_type = var.var_type.key_type
-
-        if type(key_type) == String:
-            key_match = regex.match(r"\"(.*)\"", key)
-            if key_match:
-                k = key_match.group(1)
-                key_bytes = bytes(k, 'utf-8')
-        elif type(key_type) in [Int, Uint]:
-            try:
-                key_bytes = int(key).to_bytes(32, "big")
-            except ValueError:
-                return
-        elif type(key_type) == Address:
-            key_bytes = bytes(12) + bytes.fromhex(key.replace("0x", ""))
-        elif type(key_type) in [Bytes, FixedBytes]:
-            key_bytes = bytes.fromhex(key.replace("0x", ""))
-        elif type(key_type) == Bool:
-            if key == "true":
-                key_bytes = (1).to_bytes(32, "big")
-            else:
-                key_bytes = (0).to_bytes(32, "big")
-
-        if not key_bytes:
-            return
-
-        s = sha3.keccak_256()
-        s.update(key_bytes)
-        s.update(var.location.to_bytes(32, 'big'))
-        value_address = s.digest()
-        value_type = var.var_type.value_type
-        location = int.from_bytes(value_address, 'big')
-        new_var = Variable(value_type, location = location, offset = 0)
-        return self.eval_storage(new_var, keys[1:])
-
-    def eval_storage_struct(self, var, keys):
-        if keys:
-            key = keys[0]
-            for field in var.var_type.variables:
-                if field.name == key:
-                    location = var.location + field.location
-                    new_var = Variable(field.var_type, location = location, offset = field.offset)
-                    return self.eval_storage(new_var, keys[1:])
-        else:
-            result = {}
-            for field in var.var_type.variables:
-                location = var.location + field.location
-                offset = field.offset
-                new_var = Variable(field.var_type, location = location, offset = offset)
-                value = self.eval_storage(new_var, [])
-                result[field.name] = value
-            return result
-
-    def eval_storage_array(self, var, keys):
-        if not keys:
-            length = (int).from_bytes(self.get_storage_at_address(var.location.to_bytes(32, 'big')), 'big')
-            result = []
-            for i in range(length):
-                result.append(self.eval_storage_array(var, [i]))
-            return result
-        idx = int(keys[0])
-        s = sha3.keccak_256()
-        s.update(var.location.to_bytes(32, 'big'))
-        elem_address = int.from_bytes(s.digest(), byteorder='big')
-        location, offset = self.location_and_offset_for_array_idx(var.var_type, idx)
-        new_var = Variable(var.var_type.element_type, location = elem_address + location, offset = offset)
-        return self.eval_storage(new_var, keys[1:])
-
     def location_and_offset_for_array_idx(self, arr, idx):
         if arr.element_type.size < 256:
             elems_per_slot = (256 // arr.element_type.size)
@@ -535,27 +511,63 @@ class Debugger:
             offset = 0
         return [location, offset]
 
-    def eval_storage_elementary_type(self, var):
-        address = var.location.to_bytes(32, byteorder='big')
-        result = self.get_storage_at_address(address)
-        result_int = int.from_bytes(result, byteorder='big')
-        result_int = (result_int >> var.offset) & ((2 << var.var_type.size - 1) - 1)
-        result = result_int.to_bytes(var.var_type.size // 8, byteorder='big')
-        return self.elementary_type_as_obj(var.var_type, result)
+    def eval_storage_fixed_array_at_idx(self, var, idx):
+        element_type = var.var_type.element_type
+        rel_location, offset = self.location_and_offset_for_array_idx(var.var_type, idx)
+        location = var.location + rel_location
+        new_var = Variable(element_type, location = location, offset = offset, location_type = 'storage')
+        return self.eval_storage(new_var)
 
-    def eval_storage(self, var, keys):
-        if type(var.var_type) in [Int, Uint, FixedBytes, Bool, Address]:
-            return self.eval_storage_elementary_type(var)
-        elif type(var.var_type) in [String, Bytes]:
-            return self.eval_storage_string_or_bytes(var)
-        elif type(var.var_type) is FixedArray:
-            return self.eval_storage_fixed_array(var, keys)
-        elif type(var.var_type) is Map:
-            return self.eval_storage_map(var, keys)
-        elif type(var.var_type) is Struct:
-            return self.eval_storage_struct(var, keys)
-        elif type(var.var_type) is Array:
-            return self.eval_storage_array(var, keys)
+    def eval_storage_array_at_idx(self, var, idx):
+        s = sha3.keccak_256()
+        s.update(var.location.to_bytes(32, 'big'))
+        elem_address = int.from_bytes(s.digest(), byteorder='big')
+        location, offset = self.location_and_offset_for_array_idx(var.var_type, idx)
+        new_var = Variable(var.var_type.element_type, location = elem_address + location, offset = offset, location_type = 'storage')
+        return self.eval_storage(new_var)
+
+    def eval_storage_map_at_key(self, var, key):
+        key_bytes = None
+
+        key_type = var.var_type.key_type
+
+        if type(key_type) == String:
+            key_bytes = bytes(key, 'utf-8')
+        elif type(key_type) in [Int, Uint]:
+            try:
+                key_bytes = int(key).to_bytes(32, "big")
+            except ValueError:
+               raise EvalFailed()
+        elif type(key_type) is Address:
+            key_bytes = bytes(12) + bytes.fromhex(key.replace("0x", ""))
+        elif type(key_type) is Bytes:
+            key_bytes = bytes.fromhex(key.replace("0x", ""))
+        elif type(key_type) is FixedBytes:
+            key_bytes = bytes.fromhex(key.replace("0x", ""))
+            key_bytes =  key_bytes + bytes(32 - len(key_bytes))
+        elif type(key_type) is Bool:
+            if key:
+                key_bytes = (1).to_bytes(32, "big")
+            else:
+                key_bytes = (0).to_bytes(32, "big")
+        else:
+            raise EvalFailed()
+
+        s = sha3.keccak_256()
+        s.update(key_bytes)
+        s.update(var.location.to_bytes(32, 'big'))
+        value_address = s.digest()
+        value_type = var.var_type.value_type
+        location = int.from_bytes(value_address, 'big')
+        var = Variable(value_type, location = location, offset = 0, location_type = 'storage')
+        return self.eval_storage(var)
+
+    def eval_storage_struct_at_key(self, var, key):
+        for field in var.var_type.variables:
+            if field.name == key:
+                location = var.location + field.location
+                new_var = Variable(field.var_type, location = location, offset = field.offset, location_type = 'storage')
+                return self.eval_storage(new_var)
 
     def elementary_type_as_obj(self, var_type, data):
         if type(var_type) is Int:
@@ -584,6 +596,18 @@ class Debugger:
         except ValueError:
             return
 
+    def add_breakpoint(self, breakpoint):
+        abs_path = None
+        for contract in self.contracts:
+            for src_path in contract.source_list:
+                if breakpoint.src in src_path:
+                    abs_path = src_path
+                    break
+        if abs_path:
+            bp = Breakpoint(abs_path, breakpoint.line)
+            self.breakpoints.append(bp)
+            return bp
+
     def repl(self):
         self.print_lines()
         while not self.is_ended():
@@ -611,10 +635,25 @@ class Debugger:
             elif str.startswith(line, "break "):
                 bp = self.parse_breakpoint(line.split(" ")[1])
                 if bp:
-                    self.breakpoints.append(bp)
-                    print("Breakpoint is set")
+                    bp = self.add_breakpoint(bp)
+                    if bp:
+                        print(f"Breakpoint is set at {bp.src}:{bp.line}")
+                    else:
+                        print(f"Breakpoint is not set. Location is not found.")
                 else:
-                    print("Breakpoint is invalid")
+                    print("Breakpoint is invalid. Specify in format file:line")
+            elif str.startswith(line, "breakpoints"):
+                for i, bp in enumerate(self.breakpoints):
+                    print(f"[{i}] {bp.src}:{bp.line}")
+            elif str.startswith(line, "unbreak "):
+                arr = line.split(" ")
+                if len(arr) == 2:
+                    try:
+                        num = int(arr[1])
+                        if num < len(self.breakpoints) and num >= 0:
+                            self.breakpoints.pop(num)
+                    except ValueError:
+                        pass
             elif line == "op":
                 self.print_op()
                 self.advance()
@@ -635,3 +674,6 @@ class Debugger:
                 print("    ", end='')
             print(":" + str(line[0]) + ' ', end='')
             print(line[1])
+
+def ppp(x):
+    print(json.dumps(x, default=lambda o: {**o.__dict__, 'type': type(o).__name__ }, sort_keys=True, indent=4))
