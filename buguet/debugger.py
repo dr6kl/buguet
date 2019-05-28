@@ -335,6 +335,60 @@ class Debugger:
             return self.eval_apply_brackets(expr)
         elif type(expr) is ApplyDot:
             return self.eval_apply_dot(expr)
+        elif type(expr) is Not:
+            value = self.eval_expr(expr.value)
+            if type(value) != bool:
+                raise EvalFailed()
+            return not value
+        elif type(expr) in [Mult, Div, Mod, Plus, Minus, Lt, Gt, Le, Ge, Eq, NotEq, And, Or]:
+            return self.eval_binary_operator(expr)
+        else:
+            raise EvalFailed()
+
+    def eval_binary_operator(self, expr):
+        left = self.eval_expr(expr.left)
+        right = self.eval_expr(expr.right)
+
+        if type(left) != type(right):
+            raise EvalFailed()
+
+        if (type(expr) is Plus and not type(left) in [int, str]) or \
+           (type(expr) in [And, Or] and type(left) != bool) or \
+           (type(expr) in [Mult, Div, Mod, Minus, Gt, Ge, Lt, Le] and type(left) != int):
+            raise EvalFailed()
+
+        elif type(expr) is Mult:
+            return left * right
+        elif type(expr) is Div:
+            if right == 0:
+                raise EvalFailed()
+            return left // right
+        elif type(expr) is Mod:
+            if right == 0:
+                raise EvalFailed()
+            return left % right
+        if type(expr) is Plus:
+            return left + right
+        elif type(expr) is Minus:
+            return left - right
+        elif type(expr) is Gt:
+            return left > right
+        elif type(expr) is Ge:
+            return left >= right
+        elif type(expr) is Lt:
+            return left < right
+        elif type(expr) is Le:
+            return left <= right
+        elif type(expr) is Eq:
+            return left == right
+        elif type(expr) is NotEq:
+            return left != right
+        elif type(expr) is And:
+            return left and right
+        elif type(expr) is Or:
+            return left or right
+        else:
+            raise EvalFailed()
 
     def eval_var(self, var_name):
         function = self.current_func()

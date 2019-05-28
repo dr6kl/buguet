@@ -105,3 +105,10 @@ class TestDebugger(unittest.TestCase):
         debugger.continu()
         self.assertEqual(debugger.eval("st"), "hello hello hello");
         self.assertEqual(debugger.eval("b.e.b"), 34);
+
+    def test6(self):
+        debugger = self.prepare_debugger()
+        debugger.add_breakpoint(Breakpoint("Foo", 235))
+        debugger.continu()
+        self.assertEqual(debugger.eval("ccc.x1[myMap2[\"foo\"][\"bar\"] + myMap2[\"bar\"][\"foo\"] - arr_aa[4][c][b][a] - 3]"), 15);
+
