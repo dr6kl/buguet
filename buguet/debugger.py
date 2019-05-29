@@ -416,6 +416,12 @@ class Debugger:
             raise EvalFailed()
 
     def eval_apply_dot(self, expr):
+        if expr.left == Name("msg"):
+            if expr.right.value == "sender":
+                return self.tracer.get_sender(self.position)
+            if expr.right.value == "value":
+                return self.tracer.get_value(self.position)
+
         var = self.eval_expr(expr.left)
         if not type(var) is Variable or not type(var.var_type) is Struct:
             raise EvalFailed()

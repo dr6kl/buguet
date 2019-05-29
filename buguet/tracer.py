@@ -165,6 +165,54 @@ class Tracer:
         res = self.do_request(tracer)
         return  res
 
+    def get_sender(self, position):
+        tracer = """
+        {
+            res: null,
+            pos: 0,
+
+            step: function(log, db) {
+                if (this.pos == """+str(position)+""") {
+                    this.res = toHex(log.contract.getCaller()).toLowerCase().replace('0x', '');
+                }
+                this.pos += 1;
+            },
+
+            result: function() {
+                return this.res;
+            },
+
+            fault: function() {
+            }
+        }
+        """
+        res = self.do_request(tracer)
+        return  res
+
+    def get_value(self, position):
+        tracer = """
+        {
+            res: null,
+            pos: 0,
+
+            step: function(log, db) {
+                if (this.pos == """+str(position)+""") {
+                    this.res = log.contract.getValue();
+                }
+                this.pos += 1;
+            },
+
+            result: function() {
+                return this.res;
+            },
+
+            fault: function() {
+            }
+        }
+        """
+        res = self.do_request(tracer)
+        return  res
+
     def do_request(self, tracer):
         return self.web3.manager.request_blocking("debug_traceTransaction", [self.transaction_id, {"tracer": tracer}])
 

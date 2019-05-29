@@ -11,6 +11,9 @@ class Name:
     def __init__(self, value):
         self.value = value
 
+    def __eq__(self, other):
+        return self.__dict__ == other.__dict__
+
 class Var:
     def __init__(name, var1):
         self.name = name
