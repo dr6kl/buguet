@@ -174,13 +174,13 @@ contract Foo is Bar {
 
     uint x = foo(1, 2, 3) + foo1(1, 2, 3);
     x += foo2(2, strct1, 3);
+    counter.increment();
+
     if (x > 0) {
       cnt += 1;
     } else {
       cnt -= 1;
     }
-
-    counter.increment();
   }
 
   function foo2(uint a, MyStruct b, uint c1) internal returns (uint) {

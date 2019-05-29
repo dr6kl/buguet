@@ -112,3 +112,48 @@ class TestDebugger(unittest.TestCase):
         debugger.continu()
         self.assertEqual(debugger.eval("ccc.x1[myMap2[\"foo\"][\"bar\"] + myMap2[\"bar\"][\"foo\"] - arr_aa[4][c][b][a] - 3]"), 15);
 
+    def test6(self):
+        debugger = self.prepare_debugger()
+        debugger.add_breakpoint(Breakpoint("Foo", 145))
+        debugger.continu()
+        self.assertEqual(debugger.eval("a"), 1);
+        self.assertEqual(debugger.eval("b"), 2);
+        self.assertEqual(debugger.eval("d"), 3);
+
+    def test7(self):
+        debugger = self.prepare_debugger()
+        debugger.add_breakpoint(Breakpoint("Foo", 15))
+        debugger.continu()
+        self.assertEqual(debugger.eval("x"), 3);
+        self.assertEqual(debugger.eval("cnt"), 12);
+        debugger.breakpoints = []
+        debugger.add_breakpoint(Breakpoint("Foo", 179))
+        debugger.continu()
+        self.assertEqual(debugger.eval("b"), 37);
+
+    def prepare_debugger_init(self):
+        web3 = Web3(HTTPProvider("http://localhost:8545"))
+        web3.middleware_stack.inject(geth_poa_middleware, layer=0)
+        f = open("examples/out.json")
+        data = [json.load(f)]
+        f.close()
+        f = open("examples/transaction_init.txt")
+        transaction_id = f.read()
+        f.close()
+        return Debugger(web3, data, transaction_id, ["examples"])
+
+    def test8(self):
+        debugger = self.prepare_debugger_init()
+        debugger.add_breakpoint(Breakpoint("Foo", 112))
+        debugger.continu()
+        self.assertEqual(debugger.eval("i"), 13)
+        debugger.breakpoints = []
+        debugger.add_breakpoint(Breakpoint("Foo", 20))
+        debugger.continu()
+        debugger.stepout()
+        self.assertEqual(debugger.eval("b"), 13)
+        self.assertEqual(debugger.eval("cnt"), 12)
+        debugger.breakpoints = []
+        debugger.add_breakpoint(Breakpoint("Foo", 130))
+        debugger.continu()
+        self.assertEqual(debugger.eval("b"), 20)
