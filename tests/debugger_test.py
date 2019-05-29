@@ -4,6 +4,7 @@ from web3 import Web3, HTTPProvider
 from web3.middleware import geth_poa_middleware
 import json
 from buguet.models import Breakpoint
+from buguet.repl import Repl
 
 class TestDebugger(unittest.TestCase):
     def prepare_debugger(self):
@@ -157,3 +158,13 @@ class TestDebugger(unittest.TestCase):
         debugger.add_breakpoint(Breakpoint("Foo", 130))
         debugger.continu()
         self.assertEqual(debugger.eval("b"), 20)
+
+    def test9(self):
+        debugger = self.prepare_debugger()
+        debugger.add_breakpoint(Breakpoint("Foo", 153))
+        debugger.continu()
+        self.assertEqual(debugger.eval("strct"), {'a': 4, 'b': 25, 'c': 'hello world 1', 'd': 'baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab', 'e': {'a': 13, 'b': 35}})
+        self.assertEqual(debugger.eval("arr_aa[4][3]"), [[0, 0], [0, 0], [0, 15], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]])
+        self.assertEqual(debugger.eval("aaa"), "Map")
+        self.assertEqual(debugger.eval("zz2[\"foo\"]"), [{'a': 4, 'b': 25, 'c': 'hello world 1', 'd': 'baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab', 'e': {'a': 13, 'b': 35}}, {'a': 3, 'b': 24, 'c': 'hello world', 'd': 'baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab', 'e': {'a': 12, 'b': 34}}])
+

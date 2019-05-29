@@ -10,12 +10,18 @@ from buguet.parser import *
 import json
 import copy
 import os
+from buguet.util import *
 
 class EvalFailed(Exception):
     pass
 
 class VarNotYetInitialized(Exception):
     pass
+
+class EvalResultTooLarge(Exception):
+    pass
+
+TRACE_REQ_LIMIT = 200
 
 class Debugger:
     def __init__(self, web3, contracts_data, transaction_id, source_roots = []):
@@ -37,6 +43,7 @@ class Debugger:
             self.load_contract_by_address(addr, True)
 
         self.breakpoints = []
+        self.trace_req_counter = 0
 
     def init_contracts(self, contracts_data):
         self.contracts = []
@@ -190,6 +197,9 @@ class Debugger:
                 return f
 
     def get_storage_at_address(self, address):
+        self.trace_req_counter += 1
+        if self.trace_req_counter >= TRACE_REQ_LIMIT:
+            raise EvalResultTooLarge()
         return self.tracer.get_storage(self.position, address.hex())
 
     def advance(self):
@@ -257,13 +267,20 @@ class Debugger:
     def eval(self, line):
         try:
             expr = Parser(line).parse()
-            return self.eval_expr(expr)
+            res = self.eval_expr(expr)
+            if type(res) is Variable:
+                return self.expand_var(res)
+            return res
         except ParsingFailed:
             return "Can not parse expression"
         except EvalFailed:
             return "Can not evaluate expression"
         except VarNotYetInitialized:
             return "Variable is not yet initialized"
+        except EvalResultTooLarge:
+            return "Evaluation result is too large"
+        finally:
+            self.trace_req_counter = 0
 
     def eval_expr(self, expr):
         if type(expr) is Literal:
@@ -411,6 +428,9 @@ class Debugger:
             raise EvalFailed()
 
     def get_memory(self, idx):
+        self.trace_req_counter += 1
+        if self.trace_req_counter >= TRACE_REQ_LIMIT:
+            raise EvalResultTooLarge()
         return self.tracer.get_memory(self.position, idx)
 
     def eval_memory(self, var):
@@ -578,6 +598,67 @@ class Debugger:
             return data[-20:].hex()
 
         return data.hex()
+
+    def expand_fixed_array(self, var):
+        length = var.var_type.length
+        res = []
+        for i in range(length):
+            if var.location_type == 'storage':
+                el = self.eval_storage_fixed_array_at_idx(var, i)
+            elif var.location_type == 'memory':
+                el = self.eval_memory_array_at_idx(var, i)
+
+            if type(el) is Variable:
+                el = self.expand_var(el)
+            res.append(el)
+        return res
+
+    def expand_array(self, var):
+        res = []
+
+        if var.location_type == 'storage':
+            length = self.get_storage_at_address(var.location.to_bytes(32, 'big'))
+        elif var.location_type == 'memory':
+            length = self.get_memory(var.location)
+
+        length = (int).from_bytes(length, byteorder = 'big')
+
+        for i in range(length):
+            if var.location_type == 'storage':
+                el = self.eval_storage_array_at_idx(var, i)
+            elif var.location_type == 'memory':
+                el = self.eval_memory_array_at_idx(var, i)
+
+            if type(el) is Variable:
+                el = self.expand_var(el)
+            res.append(el)
+        return res
+
+    def expand_struct(self, var):
+        res = {}
+        for field in var.var_type.variables:
+            key = field.name
+            if var.location_type == 'storage':
+                el = self.eval_storage_struct_at_key(var, key)
+            elif var.location_type == 'memory':
+                el = self.eval_memory_struct_at_key(var, key)
+
+            if type(el) is Variable:
+                el = self.expand_var(el)
+            res[key] = el
+        return res
+
+    def expand_var(self, var):
+        if type(var.var_type) is Map:
+            return "Map"
+        elif type(var.var_type) is FixedArray:
+            return self.expand_fixed_array(var)
+        elif type(var.var_type) is Array:
+            return self.expand_array(var)
+        elif type(var.var_type) is Struct:
+            return self.expand_struct(var)
+        else:
+            raise EvalFailed()
 
     def add_breakpoint(self, breakpoint):
         abs_path = None
