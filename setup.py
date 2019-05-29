@@ -17,8 +17,7 @@ setuptools.setup(
     install_requires=[
         'web3 >=4.7.2, <5',
         'pysha3 >=1.0.2, <2',
-        'termcolor >=1.1.0, <2',
-        'regex ==2018.8.29'
+        'termcolor >=1.1.0, <2'
     ],
     entry_points={
         'console_scripts': [

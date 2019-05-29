@@ -1,8 +1,7 @@
 from web3 import Web3
 import readline
-from termcolor import colored
 import sha3
-import regex
+import re
 from buguet.models import *
 from buguet.contract_data_loader import *
 from os import path
@@ -91,7 +90,7 @@ class Debugger:
         return result
 
     def parse_version(self, version_str):
-        m = regex.match(r".*(\d+)\.(\d+)\.(\d+)*", version_str)
+        m = re.match(r".*(\d+)\.(\d+)\.(\d+)*", version_str)
         return [int(m.group(1)), int(m.group(2)), int(m.group(3))]
 
     def load_transaction(self):
@@ -217,40 +216,6 @@ class Debugger:
                 self.bp_stack.pop()
             self.contracts_stack.pop()
 
-    def memory_as_bytes(self, memory):
-        res = bytearray()
-        for x in memory:
-            res += bytes.fromhex(x)
-        return res
-
-    def show_lines(self, n = 3):
-        src_frag = self.current_src_fragment()
-        if (src_frag.file_idx == -1):
-            return []
-        line_num = self.current_line_number()
-
-        res = []
-        for i in range(line_num - n, line_num + n + 1):
-            if i >= 0  and i < len(self.current_source()):
-                line = self.current_source()[i]
-
-                offset = self.current_contract().source_offsets[src_frag.file_idx][i]
-                start = src_frag.start - offset
-                end = src_frag.start - offset + src_frag.length
-                if start >= 0 and end <= len(line):
-                    line = str(line[0:start], "utf8") + colored(str(line[start:end], "utf8"), 'red') + str(line[end:len(line)],"utf8")
-                elif start >= 0 and start < len(line):
-                    line = str(line[0:start], "utf8") + colored(str(line[start:len(line)], "utf8"), 'red')
-                elif end > 0 and end <= len(line):
-                    line = colored(str(line[0:end], "utf8"), 'red') + str(line[end:len(line)], "utf8")
-                elif start < 0 and end > len(line):
-                    line = colored(str(line, "utf8"), 'red')
-                else:
-                    line = str(line, "utf8")
-
-                res.append([i + 1, line])
-        return res
-
     def step(self):
         x = self.current_src_fragment()
         while x == self.current_src_fragment() or self.current_src_fragment().file_idx == -1:
@@ -288,32 +253,6 @@ class Debugger:
                 if (bp.src == self.current_source_path()
                         and bp.line == self.current_line_number() + 1):
                     return
-
-    def print_stack(self):
-        stack = self.tracer.get_all_stack(self.position)
-        for i, x in enumerate(reversed(stack)):
-            print(x.hex())
-            if (len(stack) - i - 1) in self.bp_stack:
-                print()
-        print("-----------")
-        print("\n")
-
-    def print_memory(self):
-        mem = self.tracer.get_all_memory(self.position)
-        for i, w in enumerate(mem):
-            print(hex(i * 32) + ': ' + w)
-        print("-----------")
-        print("\n")
-
-    def print_op(self):
-        op = self.current_op()
-        frag = self.current_src_fragment()
-        print(op['op'], end = '')
-        if op.get('arg'):
-            print(' ' + int(op['arg']).to_bytes(32, 'big').hex(), end = '')
-        if frag.jump != '-':
-            print(' ' + frag.jump, end = '')
-        print()
 
     def eval(self, line):
         try:
@@ -640,16 +579,6 @@ class Debugger:
 
         return data.hex()
 
-    def parse_breakpoint(self, bp):
-        arr = bp.split(":")
-        if len(arr) != 2:
-            return
-        try:
-            filename, line = arr[0], int(arr[1])
-            return Breakpoint(filename, line)
-        except ValueError:
-            return
-
     def add_breakpoint(self, breakpoint):
         abs_path = None
         for contract in self.contracts:
@@ -661,73 +590,3 @@ class Debugger:
             bp = Breakpoint(abs_path, breakpoint.line)
             self.breakpoints.append(bp)
             return bp
-
-    def repl(self):
-        self.print_lines()
-        while not self.is_ended():
-            line = input("Command: ")
-            if line == "next" or line == "n":
-                self.next()
-                if not self.is_ended():
-                    self.print_lines()
-            elif line == "step" or line == "s":
-                self.step()
-                if not self.is_ended():
-                    self.print_lines()
-            elif line == "stepout" or line == "so":
-                self.stepout()
-                if not self.is_ended():
-                    self.print_lines()
-            elif line == "continue" or line == "c":
-                self.continu()
-                if not self.is_ended():
-                    self.print_lines()
-            elif line == "stack" or line == "st":
-                self.print_stack()
-            elif line == "memory" or line == "mem":
-                self.print_memory()
-            elif str.startswith(line, "break "):
-                bp = self.parse_breakpoint(line.split(" ")[1])
-                if bp:
-                    bp = self.add_breakpoint(bp)
-                    if bp:
-                        print(f"Breakpoint is set at {bp.src}:{bp.line}")
-                    else:
-                        print(f"Breakpoint is not set. Location is not found.")
-                else:
-                    print("Breakpoint is invalid. Specify in format file:line")
-            elif str.startswith(line, "breakpoints"):
-                for i, bp in enumerate(self.breakpoints):
-                    print(f"[{i}] {bp.src}:{bp.line}")
-            elif str.startswith(line, "unbreak "):
-                arr = line.split(" ")
-                if len(arr) == 2:
-                    try:
-                        num = int(arr[1])
-                        if num < len(self.breakpoints) and num >= 0:
-                            self.breakpoints.pop(num)
-                    except ValueError:
-                        pass
-            elif line == "op":
-                self.print_op()
-                self.advance()
-                if not self.is_ended():
-                    self.print_lines()
-            else:
-                print(self.eval(line))
-
-    def print_lines(self, n = 3):
-        lines = self.show_lines(n)
-        print()
-        path = self.current_contract().source_list[self.current_src_fragment().file_idx]
-        print(colored(self.current_contract_address(), "blue") + "#" + colored(path, "green"))
-        for i, line in enumerate(lines):
-            if len(lines) // 2 == i:
-                print(" => ", end='')
-            else:
-                print("    ", end='')
-            print(":" + str(line[0]) + ' ', end='')
-            print(line[1])
-
-def ppp(x):
-    print(json.dumps(x, default=lambda o: {**o.__dict__, 'type': type(o).__name__ }, sort_keys=True, indent=4))

@@ -1,6 +1,7 @@
 import argparse
 import json
 from buguet.debugger import Debugger
+from buguet.repl import Repl
 from web3.middleware import geth_poa_middleware
 from web3 import Web3, HTTPProvider
 
@@ -26,5 +27,5 @@ def main():
     data = list(map(lambda f: json.load(open(f)), json_files))
 
     debugger = Debugger(web3, data, args.transaction_id, args.source_roots.split(","))
-    debugger.repl()
+    Repl(debugger).repl()
 
