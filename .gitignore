@@ -4,3 +4,4 @@ examples/transaction_init.txt
 venv
 __pycache__
 buguet.egg-info
+tests/solc

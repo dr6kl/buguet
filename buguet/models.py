@@ -72,6 +72,9 @@ class Function:
                 self._return_vars_by_name[var.name] = var
         return self._return_vars_by_name
 
+class Block:
+    def __init__(self):
+        self.local_vars = []
 
 class Variable:
     def __init__(self, var_type, name=None, location=None, offset=None, location_type=None):

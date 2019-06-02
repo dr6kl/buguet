@@ -1,11 +1,11 @@
-pragma solidity ^0.4.13;
+pragma solidity ^0.5.0;
 
-import "Bar.sol";
+import "Bar5.sol";
 
 contract Counter {
   uint cnt = 12;
 
-  function Counter() {
+  constructor() public {
     uint b = 13;
     uint d = aaa(b, 1);
   }
@@ -76,7 +76,7 @@ contract Foo is Bar {
   mapping(string => uint256)[] bbb;
 
 
-  function Foo() public {
+  constructor() public {
     myMap2["foo"]["bar"] = 13;
     myMap2["bar"]["foo"] = 17;
     myArray.length = 1001;
@@ -87,7 +87,7 @@ contract Foo is Bar {
     bbb[7]["bar"] = 49;
     flag = true;
     flag2 = false;
-    vv = 49;
+    vv = hex"31";
     aaa1 = 100;
     aaa2 = 101;
     aaa3 = 103;
@@ -97,7 +97,7 @@ contract Foo is Bar {
     bts2.length = 1000;
     uint i;
     for (i = 0; i < 13; i++) {
-      bts[i] = byte(i);
+      bts[i] = bytes32(i)[31];
     }
     bts2[900] = 0xFF;
     myAddr = 0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa;
@@ -136,7 +136,7 @@ contract Foo is Bar {
     ccc.x6[false] = 11;
   }
 
-  function createCounter(uint a) returns (uint) {
+  function createCounter(uint a) public returns (uint) {
     counter = new Counter();
     return a + 2;
   }
@@ -160,7 +160,7 @@ contract Foo is Bar {
       a += 1;
     }
     uint b = myArray[1000];
-
+    test_blocks();
     ggg(5, 6);
     buzz(1, 2);
 
@@ -183,7 +183,7 @@ contract Foo is Bar {
     }
   }
 
-  function foo2(uint a, MyStruct b, uint c1) internal returns (uint) {
+  function foo2(uint a, MyStruct storage b, uint c1) internal returns (uint) {
     string memory st = "hello hello hello";
     return 0;
   }
@@ -198,7 +198,7 @@ contract Foo is Bar {
     ee[3] = 502;
     MyStruct[] memory gg = new MyStruct[](7);
     MyStruct[10] memory hh;
-    MyStruct storage sss;
+    MyStruct storage sss = strct;
 
     sss = strct;
 
@@ -216,7 +216,7 @@ contract Foo is Bar {
     a = a * 2;
     uint d;
     d = a - b + c;
-    var jrku = hh;
+    //var jrku = hh;
     return d;
   }
 
@@ -233,6 +233,40 @@ contract Foo is Bar {
     e = a - b;
     f = c * a;
     return d + e + f;
+  }
+
+  function test_blocks() internal {
+    uint a = 1;
+    uint b = 2;
+    for (uint i = 0; i < 10; i++) {
+      for (uint j = 0; j < 10; j++) {
+        uint k = 0;
+        while (k < 10) {
+          uint d = 0;
+          if (i >= 3 && j >= 4 && k >= 5) {
+            uint e = 27;
+            d = e;
+            a++;
+          } else {
+            uint f = 33;
+            d = f;
+            a++;
+          }
+          k++;
+        }
+        do {
+          uint g = 0;
+          if (i < 5) {
+            uint h = 21;
+            g = h;
+            a++;
+          }
+          k++;
+        } while (k < 20);
+      }
+    }
+    uint p = 11;
+    a++;
   }
 }
 

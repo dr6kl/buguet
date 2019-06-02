@@ -1,5 +1,6 @@
 from buguet.models import *
 import regex
+from buguet.util import ppp
 
 class ContractDataLoader:
     def __init__(self, data, asts, source_list, sources, version):
@@ -181,13 +182,12 @@ class ContractDataLoader:
 
     def parse_function(self, ast):
         name = ast['attributes']['name']
-
         src_arr = list(map(lambda x: int(x), ast['src'].split(":")))
         src = SrcMap(src_arr[0], src_arr[1], src_arr[2], '')
 
         params = []
         return_vars = []
-        local_vars = []
+        block = Block()
 
         params_parsed = False
 
@@ -196,41 +196,95 @@ class ContractDataLoader:
                 if not params_parsed:
                     for y in x.get('children', []):
                         if y['name'] == 'VariableDeclaration':
-                            params.append(self.parse_function_variable(y))
+                            params.append(self.parse_function_variable(y, 'memory'))
                     params_parsed = True
                 else:
                     for y in x.get('children', []):
                         if y['name'] == 'VariableDeclaration':
-                            return_vars.append(self.parse_function_variable(y))
+                            return_vars.append(self.parse_function_variable(y, 'memory'))
             if x['name'] == 'Block':
-                def process_function_node(node):
-                    if node['name'] == 'VariableDeclaration':
-                        local_vars.append(self.parse_function_variable(node))
-                self.traverse_all(x, lambda x: process_function_node(x))
+                block = Block()
+                self.traverse_func(x, block)
+
+        self.set_local_var_locations(block)
+        local_vars = self.flatten_local_vars(block)
+
         for i, p in enumerate(params):
             params[i].location = i
-        for i, p in enumerate(local_vars):
-           local_vars[i].location = i
         for i, p in enumerate(return_vars):
            return_vars[i].location = i
+
         return Function(name, src, params, local_vars, return_vars)
 
-    def parse_function_variable(self, ast):
-        if 'memory' in ast['attributes']['type']:
-            location_type = 'memory'
-        elif 'storage' in ast['attributes']['type']:
-            location_type = 'storage'
+    def flatten_local_vars(self, parent):
+        result = []
+        for v in parent.local_vars:
+            if type(v) is Block:
+                result += self.flatten_local_vars(v)
+            else:
+                result.append(v)
+        return result
+
+    def set_local_var_locations(self, block):
+        if self.version >= [0, 5, 0]:
+            self.set_local_var_locations_v5(block, 0)
         else:
-            location_type = None
+            self.set_local_var_locations_v4(block, 0)
+
+    def set_local_var_locations_v5(self, parent, base_idx):
+        i = base_idx
+        for v in parent.local_vars:
+            if type(v) is Block:
+               self.set_local_var_locations_v5(v, i)
+            elif type(v) is Variable:
+                v.location = i
+                i += 1
+
+    def set_local_var_locations_v4(self, parent, base_idx):
+        i = base_idx
+        for v in parent.local_vars:
+            if type(v) is Block:
+               i = self.set_local_var_locations_v4(v, i)
+            elif type(v) is Variable:
+                v.location = i
+                i += 1
+        return i
+
+    def parse_function_variable(self, ast, default_location):
+        if self.version < [0, 4, 22]:
+            if 'memory' in ast['attributes']['type']:
+                location_type = 'memory'
+            elif 'storage' in ast['attributes']['type']:
+                location_type = 'storage'
+            else:
+                location_type = default_location
+        else:
+            if ast['attributes'].get('storageLocation') == 'default':
+                location_type = default_location
+            else:
+                location_type = ast['attributes']['storageLocation']
+
         var = self.parse_variable(ast)
         var.location_type = location_type
         return var
 
-    def traverse_all(self, node, f):
-        f(node)
+    def traverse_func(self, node, parent):
         if 'children' in node:
             for c in node['children']:
-                self.traverse_all(c, f)
+                if c['name'] in ['ForStatement', 'WhileStatement', 'DoWhileStatement']:
+                    block = Block()
+                    self.traverse_func(c, block)
+                    parent.local_vars.append(block)
+                elif c['name'] == 'IfStatement':
+                    for sc in c['children']:
+                        block = Block()
+                        self.traverse_func(sc, block)
+                        parent.local_vars.append(block)
+                elif c['name'] == 'VariableDeclaration':
+                    v = self.parse_function_variable(c, 'storage')
+                    parent.local_vars.append(v)
+                else:
+                    self.traverse_func(c, parent)
 
     def prepare_ops_mapping(self, code):
         pc_to_op_idx = {}

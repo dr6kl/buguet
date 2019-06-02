@@ -168,3 +168,33 @@ class TestDebugger(unittest.TestCase):
         self.assertEqual(debugger.eval("aaa"), "Map")
         self.assertEqual(debugger.eval("zz2[\"foo\"]"), [{'a': 4, 'b': 25, 'c': 'hello world 1', 'd': 'baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab', 'e': {'a': 13, 'b': 35}}, {'a': 3, 'b': 24, 'c': 'hello world', 'd': 'baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab', 'e': {'a': 12, 'b': 34}}])
 
+    def test10(self):
+        debugger = self.prepare_debugger()
+        debugger.add_breakpoint(Breakpoint("Foo", 249))
+        debugger.continu()
+        self.assertEqual(debugger.eval("b"), 2)
+        self.assertEqual(debugger.eval("i"), 3)
+        self.assertEqual(debugger.eval("j"), 4)
+        self.assertEqual(debugger.eval("k"), 5)
+        self.assertEqual(debugger.eval("d"), 27)
+        self.assertEqual(debugger.eval("e"), 27)
+        debugger.breakpoints = []
+        debugger.add_breakpoint(Breakpoint("Foo", 262))
+        debugger.continu()
+        self.assertEqual(debugger.eval("b"), 2)
+        self.assertEqual(debugger.eval("i"), 3)
+        self.assertEqual(debugger.eval("j"), 4)
+        self.assertEqual(debugger.eval("k"), 10)
+        self.assertEqual(debugger.eval("g"), 21)
+        self.assertEqual(debugger.eval("h"), 21)
+        debugger.breakpoints = []
+        debugger.add_breakpoint(Breakpoint("Foo", 253))
+        debugger.continu()
+        self.assertEqual(debugger.eval("i"), 3)
+        self.assertEqual(debugger.eval("j"), 5)
+        self.assertEqual(debugger.eval("f"), 33)
+        self.assertEqual(debugger.eval("d"), 33)
+        debugger.breakpoints = []
+        debugger.add_breakpoint(Breakpoint("Foo", 269))
+        debugger.continu()
+        self.assertEqual(debugger.eval("p"), 11)
