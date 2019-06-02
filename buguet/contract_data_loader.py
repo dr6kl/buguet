@@ -46,7 +46,8 @@ class ContractDataLoader:
                 self.prepare_sourcemap(self.data['srcmap']),
                 self.source_list,
                 self.sources,
-                self.prepare_line_offsets()
+                self.prepare_line_offsets(),
+                self.version
             )
 
         self.set_locations(contract)

@@ -108,9 +108,14 @@ class Debugger:
         code = self.web3.eth.getCode(Web3.toChecksumAddress(address)).hex()
         code = code.replace("0x", "")
         if len(code) > 0:
-            el = ContractStackElement(address, self.find_contract_by_code(code), is_init)
+            contract = self.find_contract_by_code(code)
+            el = ContractStackElement(address, contract, is_init)
             self.contracts_stack.append(el)
-            self.bp_stack.append(-1)
+            if is_init:
+                self.bp_stack.append(-1)
+            else:
+                if contract.version < [0, 5, 1]:
+                    self.bp_stack.append(-1)
 
     def find_contract_by_code(self, code):
         code = self.cut_bin_metadata(code)
@@ -346,6 +351,9 @@ class Debugger:
     def eval_var(self, var_name):
         function = self.current_func()
         if not function:
+            raise EvalFailed()
+
+        if len(self.bp_stack) == 0:
             raise EvalFailed()
 
         bp = self.bp_stack[-1]

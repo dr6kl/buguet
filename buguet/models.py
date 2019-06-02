@@ -2,7 +2,7 @@ class Contract:
     def __init__(self, name, src, functions, variables,
             bin_runtime, pc_to_op_idx_runtime, srcmap_runtime,
             bin_init, pc_to_op_idx_init, srcmap_init,
-            source_list, sources, source_offsets):
+            source_list, sources, source_offsets, version):
         self.name = name
         self.src = src
         self.functions = functions
@@ -17,6 +17,7 @@ class Contract:
         self.sources = sources
         self.source_offsets = source_offsets
         self._variables_by_name = {}
+        self.version = version
 
     @property
     def variables_by_name(self):
