@@ -33,12 +33,12 @@ class Debugger:
         self.contracts_stack = []
         self.load_transaction_trace()
         self.init_contracts(contracts_data)
-        self.load_transaction()
+        transaction = self.web3.eth.getTransaction(self.transaction_id)
 
-        if self.transaction.to:
-            self.load_contract_by_address(self.transaction.to.lower().replace('0x', ''), False)
+        if transaction.to:
+            self.load_contract_by_address(transaction.to.lower().replace('0x', ''), False)
         else:
-            tx_receipt = web3.eth.waitForTransactionReceipt(self.transaction.hash)
+            tx_receipt = web3.eth.waitForTransactionReceipt(transaction.hash)
             addr = tx_receipt.contractAddress.lower().replace('0x', '')
             self.load_contract_by_address(addr, True)
 
@@ -99,9 +99,6 @@ class Debugger:
     def parse_version(self, version_str):
         m = re.match(r".*(\d+)\.(\d+)\.(\d+)*", version_str)
         return [int(m.group(1)), int(m.group(2)), int(m.group(3))]
-
-    def load_transaction(self):
-        self.transaction = self.web3.eth.getTransaction(self.transaction_id)
 
     def load_transaction_trace(self):
         self.tracer = Tracer(self.web3, self.transaction_id)
