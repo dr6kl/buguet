@@ -109,7 +109,7 @@ class Debugger:
         code = code.replace("0x", "")
         if len(code) > 0:
             contract = self.find_contract_by_code(code)
-            el = ContractStackElement(address, contract, is_init)
+            el = ContractCall(address, contract, is_init)
             self.contracts_stack.append(el)
             if is_init:
                 self.bp_stack.append(-1)

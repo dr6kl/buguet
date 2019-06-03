@@ -146,7 +146,7 @@ class Map:
     def size(self):
         return 256
 
-class ContractStackElement:
+class ContractCall:
     def __init__(self, address, contract, is_init):
         self.address = address
         self.contract = contract
