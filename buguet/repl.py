@@ -59,46 +59,26 @@ class Repl:
             else:
                 print(self.debugger.eval(line))
 
-    def show_lines(self, n = 3):
+    def print_lines(self, n = 3):
         src_frag = self.debugger.current_src_fragment()
         if (src_frag.file_idx == -1):
             return []
         line_num = self.debugger.current_line_number()
-
-        res = []
-        for i in range(line_num - n, line_num + n + 1):
-            if i >= 0  and i < len(self.debugger.current_source()):
-                line = self.debugger.current_source()[i]
-
-                offset = self.debugger.current_contract().source_offsets[src_frag.file_idx][i]
-                start = src_frag.start - offset
-                end = src_frag.start - offset + src_frag.length
-                if start >= 0 and end <= len(line):
-                    line = str(line[0:start], "utf8") + colored(str(line[start:end], "utf8"), 'red') + str(line[end:len(line)],"utf8")
-                elif start >= 0 and start < len(line):
-                    line = str(line[0:start], "utf8") + colored(str(line[start:len(line)], "utf8"), 'red')
-                elif end > 0 and end <= len(line):
-                    line = colored(str(line[0:end], "utf8"), 'red') + str(line[end:len(line)], "utf8")
-                elif start < 0 and end > len(line):
-                    line = colored(str(line, "utf8"), 'red')
-                else:
-                    line = str(line, "utf8")
-
-                res.append([i + 1, line])
-        return res
-
-    def print_lines(self, n = 3):
-        lines = self.show_lines(n)
         print()
         path = self.debugger.current_contract().source_list[self.debugger.current_src_fragment().file_idx]
         print(colored(self.debugger.current_contract_address(), "blue") + "#" + colored(path, "green"))
-        for i, line in enumerate(lines):
-            if len(lines) // 2 == i:
-                print(" => ", end='')
-            else:
-                print("    ", end='')
-            print(":" + str(line[0]) + ' ', end='')
-            print(line[1])
+
+        for i in range(line_num - n, line_num + n + 1):
+            if i >= 0  and i < len(self.debugger.current_source()):
+                line = self.debugger.current_source()[i]
+                line = str(line, "utf8")
+                if i == line_num:
+                    line = colored(line, "red")
+                    print(" => ", end='')
+                else:
+                    print("    ", end='')
+                print(":" + str(i) + ' ', end='')
+                print(line)
 
     def parse_breakpoint(self, bp):
         arr = bp.split(":")

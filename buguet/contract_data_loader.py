@@ -345,11 +345,12 @@ class ContractDataLoader:
     def prepare_line_offsets(self):
         source_offsets = {}
         for i, lines in enumerate(self.sources):
-            offset_by_line = {}
+            offset_by_line = []
             pos = 0
             for j in range(len(lines)):
-                offset_by_line[j] = pos
+                offset_by_line.append(pos)
                 pos += len(lines[j]) + 1
+            offset_by_line.append(pos)
             source_offsets[i] = offset_by_line
         return source_offsets
 

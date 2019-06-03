@@ -177,6 +177,8 @@ class Debugger:
 
     def current_line_number(self):
         frag = self.current_src_fragment()
+        if frag.file_idx == -1:
+            return -1
         offset_by_line = self.current_contract().source_offsets[frag.file_idx]
         offset = frag.start
         start = 0
@@ -184,11 +186,12 @@ class Debugger:
         while True:
             idx = (start + end) // 2
             s = offset_by_line[idx]
-            if offset >= s and offset < s + len(self.current_source()[idx]) + 1:
+            s1 = offset_by_line[idx + 1]
+            if offset >= s and offset < s1:
                 return idx
             elif offset < s:
                 end = idx - 1
-            elif offset >= s + len(self.current_source()[idx]) + 1:
+            elif offset >= s1:
                 start = idx + 1
 
     def current_func(self):
@@ -229,14 +232,16 @@ class Debugger:
             self.contracts_stack.pop()
 
     def step(self):
-        x = self.current_src_fragment()
-        while x == self.current_src_fragment() or self.current_src_fragment().file_idx == -1:
+        start_line_number = self.current_line_number()
+        while True:
             self.advance()
             if self.is_ended():
                 return
+            line_number = self.current_line_number()
+            if line_number != -1 and line_number != start_line_number:
+                return
 
     def next(self):
-        depth = 0
         start_stack_height = len(self.bp_stack)
         while True:
             self.step()
@@ -257,8 +262,11 @@ class Debugger:
                 break
 
     def continu(self):
+        self.step()
+        if self.is_ended():
+            return
         while True:
-            self.step()
+            self.advance()
             if self.is_ended():
                 return
             for bp in self.breakpoints:
