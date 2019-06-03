@@ -9,8 +9,8 @@ def exec_cmd(cmd):
 VERSIONS = []
 for i in range(10, 26):
     VERSIONS.append("0.4." + str(i))
-# for i in range(0, 10):
-    # VERSIONS.append("0.5." + str(i))
+for i in range(0, 10):
+    VERSIONS.append("0.5." + str(i))
 
 SOLC_ROOT = os.path.abspath("tests/solc")
 
