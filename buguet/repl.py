@@ -77,7 +77,7 @@ class Repl:
                     print(" => ", end='')
                 else:
                     print("    ", end='')
-                print(":" + str(i) + ' ', end='')
+                print(":" + str(i+1) + ' ', end='')
                 print(line)
 
     def parse_breakpoint(self, bp):

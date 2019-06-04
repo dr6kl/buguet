@@ -97,7 +97,7 @@ class Debugger:
         return result
 
     def parse_version(self, version_str):
-        m = re.match(r".*(\d+)\.(\d+)\.(\d+)*", version_str)
+        m = re.match(r"(\d+)\.(\d+)\.(\d+)", version_str)
         return [int(m.group(1)), int(m.group(2)), int(m.group(3))]
 
     def load_transaction_trace(self):
