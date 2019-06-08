@@ -146,6 +146,8 @@ class Parser:
             if self.s[self.pos] == "[":
                 self.pos += 1
                 e = self.parse_expression()
+                if len(self.s) == self.pos:
+                    raise ParsingFailed()
                 if self.s[self.pos] != "]":
                     raise ParsingFailed()
                 self.pos += 1
@@ -162,6 +164,8 @@ class Parser:
         literal = self.parse_literal()
         if literal:
             return literal
+        if len(self.s) == self.pos:
+            raise ParsingFailed()
         elif self.s[self.pos] == "!":
             self.pos += 1
             t = self.parse_term()
@@ -169,6 +173,8 @@ class Parser:
         elif self.s[self.pos] == "(":
             self.pos += 1
             e = self.parse_expression()
+            if len(self.s) == self.pos:
+                raise ParsingFailed()
             if self.s[self.pos] != ")":
                 raise ParsingFailed()
             self.pos += 1
@@ -227,7 +233,7 @@ class Parser:
                 self.pos += 2
                 right = self.parse_sum()
                 left = Ge(left, right)
-            if self.s[self.pos] == "<":
+            elif self.s[self.pos] == "<":
                 self.pos += 1
                 right = self.parse_sum()
                 left = Lt(left, right)
