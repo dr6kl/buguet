@@ -21,7 +21,7 @@ class VarNotYetInitialized(Exception):
 class EvalResultTooLarge(Exception):
     pass
 
-TRACE_REQ_LIMIT = 200
+TRACE_REQ_LIMIT = 40
 
 class Debugger:
     def __init__(self, web3, contracts_data, transaction_id, source_roots = []):
