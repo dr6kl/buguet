@@ -198,3 +198,9 @@ class TestDebugger(unittest.TestCase):
         debugger.add_breakpoint(Breakpoint("Foo", 269))
         debugger.continu()
         self.assertEqual(debugger.eval("p"), 11)
+
+    def test11(self):
+        debugger = self.prepare_debugger()
+        debugger.add_breakpoint(Breakpoint("Foo", 179))
+        debugger.continu()
+        self.assertEqual(debugger.eval("b"), 37);

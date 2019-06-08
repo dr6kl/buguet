@@ -32,3 +32,12 @@ contract Bar is Final {
   }
 }
 
+contract CounterBase {
+  function some_pure_function() external returns(int) {
+    return 2;
+  }
+
+  function failing_function() {
+    require(false);
+  }
+}

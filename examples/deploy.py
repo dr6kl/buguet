@@ -30,7 +30,7 @@ f.write(tx_receipt.transactionHash.hex())
 f.close()
 
 foo = web3.eth.contract(abi=contract_data['abi'], address=contract_address)
-tx_hash = foo.functions.doSomething(1, 2, 3).transact()
+tx_hash = foo.functions.doSomething(1, 2, 3).transact({'gas': 1000000})
 tx = web3.eth.waitForTransactionReceipt(tx_hash)
 f = open("transaction_id.txt", "w")
 f.write(tx.transactionHash.hex())

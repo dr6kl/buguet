@@ -220,14 +220,18 @@ class Debugger:
 
     def check_contract_switch(self):
         op = self.current_op()
-        if op['op'] in ['CALL', 'DELEGATECALL']:
+        if op['op'] in ['CALL', 'STATICCALL']:
             address = op['new_address']
+            self.load_contract_by_address(address, False)
+        elif op['op'] in ['DELEGATECALL', 'CALLCODE']:
+            address = op['new_address']
+            address = int(address).to_bytes(20, byteorder='big').hex()
             self.load_contract_by_address(address, False)
         elif op['op'] == 'CREATE':
             address = op['new_address']
             self.load_contract_by_address(address, True)
-        elif op['op'] in ['STOP', 'RETURN']:
-            if self.current_contract_is_init():
+        elif op['op'] in ['STOP', 'RETURN', 'REVERT']:
+            if self.current_contract_is_init() or op['op'] == 'REVERT':
                 self.bp_stack.pop()
             self.contracts_stack.pop()
 
@@ -247,7 +251,7 @@ class Debugger:
             self.step()
             if self.is_ended():
                 return
-            if len(self.bp_stack) == start_stack_height:
+            if len(self.bp_stack) <= start_stack_height:
                 if self.current_src_fragment().jump == 'o':
                     self.step()
                 break
@@ -296,6 +300,8 @@ class Debugger:
         if type(expr) is Literal:
             return expr.value
         elif type(expr) is Name:
+            if expr.value == "this":
+                return self.tracer.get_address(self.position)
             return self.eval_var(expr.value)
         elif type(expr) is ApplyBrackets:
             return self.eval_apply_brackets(expr)

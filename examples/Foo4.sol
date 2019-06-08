@@ -2,7 +2,7 @@ pragma solidity ^0.4.10;
 
 import "Bar4.sol";
 
-contract Counter {
+contract Counter is CounterBase {
   uint cnt = 12;
 
   function Counter() {
@@ -175,7 +175,7 @@ contract Foo is Bar {
     uint x = foo(1, 2, 3) + foo1(1, 2, 3);
     x += foo2(2, strct1, 3);
     counter.increment();
-
+    test_call(counter);
     if (x > 0) {
       cnt += 1;
     } else {
@@ -267,6 +267,12 @@ contract Foo is Bar {
     }
     uint p = 11;
     a++;
+  }
+
+  function test_call(address addr) internal {
+    addr.delegatecall(bytes4(keccak256("increment()")));
+    addr.callcode(bytes4(keccak256("increment()")));
+    counter.some_pure_function();
   }
 }
 

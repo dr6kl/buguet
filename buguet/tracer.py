@@ -7,27 +7,30 @@ class Tracer:
         tracer = """
         {
             logs: [],
-            add_arg: false,
 
             step: function(log, db) {
                 if (this.logs.length > 0) {
                     var prev_log = this.logs[this.logs.length-1];
                     var prev_op = prev_log.op.toString();
-                    var addr = toHex(log.contract.getAddress()).toLowerCase().replace('0x', '');
-                    if (['CALL', 'DELEGATECALL', 'CREATE' ].indexOf(prev_op) != -1) {
+
+                    if (['CALL', 'CREATE', 'STATICCALL'].indexOf(prev_op) != -1) {
+                        var addr = toHex(log.contract.getAddress()).toLowerCase().replace('0x', '');
                         prev_log.new_address = addr;
+                    }
+
+                    if (prev_op.startsWith('PUSH')) {
+                        prev_log.arg = log.stack.peek(0);
                     }
                 }
                 var op = log.op.toString();
-                if (this.add_arg) {
-                    var prev_log = this.logs[this.logs.length-1];
-                    prev_log.arg = log.stack.peek(0);
-                    this.add_arg = false;
+
+                var res = {pc: log.getPC(), op: op, stack_length: log.stack.length()};
+
+                if (['DELEGATECALL', 'CALLCODE'].indexOf(op) != -1) {
+                    res.new_address = log.stack.peek(1);
                 }
-                if (op.startsWith('PUSH')) {
-                    this.add_arg = true;
-                }
-                this.logs.push({pc: log.getPC(), op: log.op.toString(), stack_length: log.stack.length()});
+
+                this.logs.push(res);
             },
 
             result: function() {
@@ -198,6 +201,30 @@ class Tracer:
             step: function(log, db) {
                 if (this.pos == """+str(position)+""") {
                     this.res = log.contract.getValue();
+                }
+                this.pos += 1;
+            },
+
+            result: function() {
+                return this.res;
+            },
+
+            fault: function() {
+            }
+        }
+        """
+        res = self.do_request(tracer)
+        return  res
+
+    def get_address(self, position):
+        tracer = """
+        {
+            res: null,
+            pos: 0,
+
+            step: function(log, db) {
+                if (this.pos == """+str(position)+""") {
+                    this.res = toHex(log.contract.getAddress());
                 }
                 this.pos += 1;
             },
