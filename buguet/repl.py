@@ -6,10 +6,13 @@ class Repl:
         self.debugger = debugger
 
     def repl(self):
+        self.print_help()
         self.print_lines()
         while not self.debugger.is_ended():
             line = input("Command: ")
-            if line == "next" or line == "n":
+            if line == "help" or line == "h":
+                self.print_help()
+            elif line == "next" or line == "n":
                 self.debugger.next()
                 if not self.debugger.is_ended():
                     self.print_lines()
@@ -25,9 +28,9 @@ class Repl:
                 self.debugger.continu()
                 if not self.debugger.is_ended():
                     self.print_lines()
-            elif line == "stack" or line == "st":
+            elif line == "stack":
                 self.print_stack()
-            elif line == "memory" or line == "mem":
+            elif line == "mem":
                 self.print_memory()
             elif str.startswith(line, "break "):
                 bp = self.parse_breakpoint(line.split(" ")[1])
@@ -39,7 +42,7 @@ class Repl:
                         print(f"Breakpoint is not set. Location is not found.")
                 else:
                     print("Breakpoint is invalid. Specify in format file:line")
-            elif str.startswith(line, "breakpoints"):
+            elif line == "breakpoints":
                 for i, bp in enumerate(self.debugger.breakpoints):
                     print(f"[{i}] {bp.src}:{bp.line}")
             elif str.startswith(line, "unbreak "):
@@ -116,3 +119,19 @@ class Repl:
             print(' ' + frag.jump, end = '')
         print()
 
+    def print_help(self):
+        print("""
+Commands:
+    help (h)                Print help
+    step (s)                Step into function
+    next (n)                Next line in current frame
+    stepout (so)            Step out of current function
+    continue (c)            Continue execution
+    break {file}:{line}     Set breakpoint
+    breakpoints             List breakpoints
+    unbreak {idx}           Remove breakpoint
+    stack                   Print current stack
+    mem                     Print memory
+    op                      Print and execute one instruction
+    {expr}                  Evaluate expression
+        """)
