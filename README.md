@@ -12,9 +12,9 @@ Ethereum node running in archive mode with debug api. E.g. geth:
 ```
 By default localhost:8545 endpoint is used.
 
-Solidity compiler. Compiled contracts in format produced by `solc` with --combined-json option.
-Each contracts called in transaction should be compiled with the same solidity
-version as they deployed on blockchain (multiple versions can be used for one transaction).
+Compiled contracts in format produced by `solc` with `--combined-json` option.
+Each contract called in transaction should be compiled with the same solidity
+version as it deployed on the blockchain (multiple versions can be used for one transaction).
 
 ### Installation
 
