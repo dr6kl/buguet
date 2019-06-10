@@ -3,7 +3,7 @@ import json
 from buguet.debugger import Debugger
 from buguet.repl import Repl
 from web3.middleware import geth_poa_middleware
-from web3 import Web3, HTTPProvider
+from web3 import Web3, HTTPProvider, IPCProvider
 
 def main():
     parser = argparse.ArgumentParser(description='Ethereum debugger')
@@ -21,7 +21,12 @@ def main():
 
     args = parser.parse_args()
 
-    web3 = Web3(HTTPProvider(args.rpc))
+    if args.rpc.startswith("http"):
+        provider = HTTPProvider(args.rpc)
+    else:
+        provider = IPCProvider(args.rpc)
+
+    web3 = Web3(provider)
     web3.middleware_stack.inject(geth_poa_middleware, layer=0)
     json_files = args.combined_json.split(",")
     data = list(map(lambda f: json.load(open(f)), json_files))
