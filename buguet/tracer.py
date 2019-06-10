@@ -13,7 +13,7 @@ class Tracer:
                     var prev_log = this.logs[this.logs.length-1];
                     var prev_op = prev_log.op.toString();
 
-                    if (['CALL', 'CREATE', 'STATICCALL'].indexOf(prev_op) != -1) {
+                    if ('CREATE' == prev_op) {
                         var addr = toHex(log.contract.getAddress()).toLowerCase().replace('0x', '');
                         prev_log.new_address = addr;
                     }
@@ -26,7 +26,7 @@ class Tracer:
 
                 var res = {pc: log.getPC(), op: op, stack_length: log.stack.length()};
 
-                if (['DELEGATECALL', 'CALLCODE'].indexOf(op) != -1) {
+                if (['CALL', 'STATICCALL', 'DELEGATECALL', 'CALLCODE'].indexOf(op) != -1) {
                     res.new_address = log.stack.peek(1);
                 }
 

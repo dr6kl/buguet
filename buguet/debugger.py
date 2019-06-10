@@ -220,10 +220,7 @@ class Debugger:
 
     def check_contract_switch(self):
         op = self.current_op()
-        if op['op'] in ['CALL', 'STATICCALL']:
-            address = op['new_address']
-            self.load_contract_by_address(address, False)
-        elif op['op'] in ['DELEGATECALL', 'CALLCODE']:
+        if op['op'] in ['CALL', 'STATICCALL', 'DELEGATECALL', 'CALLCODE']:
             address = op['new_address']
             address = int(address).to_bytes(20, byteorder='big').hex()
             self.load_contract_by_address(address, False)

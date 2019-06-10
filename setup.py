@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="buguet",
-    version="1.0.2",
+    version="1.0.3",
     author="dr6kl",
     author_email="dr6kl@protonmail.com",
     description="Ethereum debugger",
