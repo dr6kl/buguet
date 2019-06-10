@@ -1,6 +1,6 @@
 from buguet.models import *
-import regex
 from buguet.util import ppp
+import re
 
 class ContractDataLoader:
     def __init__(self, data, asts, source_list, sources, version):
@@ -78,61 +78,61 @@ class ContractDataLoader:
         )
 
     def parse_type(self, type_str):
-        match = regex.match("int(\d+)$", type_str)
+        match = re.match("int(\d+)$", type_str)
         if match:
             return Int(int(match.group(1)))
 
-        match = regex.match("uint(\d+)$", type_str)
+        match = re.match("uint(\d+)$", type_str)
         if match:
             return Uint(int(match.group(1)))
 
-        match = regex.match("bool$", type_str)
+        match = re.match("bool$", type_str)
         if match:
             return Bool()
 
-        match = regex.match("bytes(\d+)$", type_str)
+        match = re.match("bytes(\d+)$", type_str)
         if match:
             return FixedBytes(int(match.group(1)) * 8)
 
         location_regex = "(( storage \w+)| memory)?"
 
-        match = regex.match(f"bytes{location_regex}$", type_str)
+        match = re.match(f"bytes{location_regex}$", type_str)
         if match:
             return Bytes()
 
-        match = regex.match(f"string{location_regex}$", type_str)
+        match = re.match(f"string{location_regex}$", type_str)
         if match:
             return String()
 
-        match = regex.match("address$", type_str)
+        match = re.match("address$", type_str)
         if match:
             return Address()
 
-        match = regex.match(f"struct \w+\.(\w+){location_regex}$", type_str)
+        match = re.match(f"struct \w+\.(\w+){location_regex}$", type_str)
         if match:
             struct_name = match.group(1)
             if not struct_name in self.structs:
                 self.init_struct(struct_name)
             return self.structs[struct_name]
 
-        match = regex.match("contract \w+", type_str)
+        match = re.match("contract \w+", type_str)
         if match:
             return Address()
 
-        match = regex.match(f"(.*)\[(\d+)\]{location_regex}$", type_str)
+        match = re.match(f"(.*)\[(\d+)\]{location_regex}$", type_str)
         if match:
             length = int(match.group(2))
             elemType = self.parse_type(match.group(1))
             return FixedArray(elemType, length)
 
-        match = regex.match("mapping\((.*?) => (.*)\)$", type_str)
+        match = re.match("mapping\((.*?) => (.*)\)$", type_str)
         if match:
             key_type = self.parse_type(match.group(1))
             value_type = self.parse_type(match.group(2))
             result = Map(key_type, value_type)
             return result
 
-        match = regex.match(f"(.*)\[\]{location_regex}$", type_str)
+        match = re.match(f"(.*)\[\]{location_regex}$", type_str)
         if match:
             elemType = self.parse_type(match.group(1))
             return Array(elemType)
